@@ -1,7 +1,7 @@
 {
-    "id": "amdGpuMonitor",
-    "name": "AMD GPU Monitor",
-    "description": "Monitor AMD GPU usage, VRAM, temperature, power consumption and process usage.",
+    "id": "amdGpuMonitorRevive",
+    "name": "AMD GPU Monitor Revive",
+    "description": "Monitor AMD GPU usage, VRAM, temperature, power consumption and process usage with updated UI.",
     "category": "monitoring",
     "version": "1.0.0",
     "author": "Navid A.",
