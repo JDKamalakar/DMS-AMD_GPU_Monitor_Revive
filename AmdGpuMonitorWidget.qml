@@ -192,16 +192,16 @@ PluginComponent {
                     switch (root.popoutStyle) {
                         case "alt": return altStyleContent
                         case "dms": return dmsStyleContent
-                        case "old": return oldStyleContent
+                        case "legacy": return legacyStyleContent
                     }
                 }
             }
         }
     }
 
-    // old style component
+    // legacy style component
     Component {
-        id: oldStyleContent
+        id: legacyStyleContent
 
         Column {
             width: parent.width

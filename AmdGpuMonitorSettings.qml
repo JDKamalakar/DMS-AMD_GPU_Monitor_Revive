@@ -35,7 +35,7 @@ PluginSettings {
         label: "Popout Style"
         description: "Visual style for the popout panel"
         options: [
-            { label: "Old", value: "old" },
+            { label: "Legacy", value: "legacy" },
             { label: "Alternative", value: "alt" },
             { label: "DMS", value: "dms" }
         ]
