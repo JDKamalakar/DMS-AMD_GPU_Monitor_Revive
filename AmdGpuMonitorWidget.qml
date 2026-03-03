@@ -1185,20 +1185,26 @@ PluginComponent {
     }
 
 
-// ==========================================
+    // ==========================================
     // DMS EXTENDED STYLE (Advanced Dashboard)
     // ==========================================
     Component {
         id: dmsExtendedStyleContent
 
         Column {
+            id: rootColumn
             width: parent.width
             spacing: Theme.spacingL
+
+            // Ensures search grabs focus whenever the dashboard becomes visible
+            onVisibleChanged: {
+                if (visible) searchInput.forceActiveFocus()
+            }
 
             // 1. TOP HEADER: TITLE, FILTER PILLS, SEARCH BAR
             Item {
                 width: parent.width
-                height: 32
+                height: 44 
 
                 Row {
                     id: leftControls
@@ -1211,19 +1217,23 @@ PluginComponent {
                         height: parent.height
                         anchors.verticalCenter: parent.verticalCenter
                         spacing: Theme.spacingS
-                        DankIcon { name: "dashboard"; size: 22; color: Theme.primary; anchors.verticalCenter: parent.verticalCenter }
-                        StyledText { text: "Processes"; font.pixelSize: 18; font.weight: Font.Bold; color: Theme.surfaceText; anchors.verticalCenter: parent.verticalCenter }
+                        DankIcon { name: "dashboard"; size: 24; color: Theme.primary; anchors.verticalCenter: parent.verticalCenter }
+                        StyledText { text: "Processes"; font.pixelSize: 16; font.weight: Font.Bold; color: Theme.surfaceText; anchors.verticalCenter: parent.verticalCenter }
                     }
 
+                    // Native DankButtonGroup
                     DankButtonGroup {
                         id: processFilters
                         anchors.verticalCenter: parent.verticalCenter
                         width: 230 
-                        buttonHeight: 28 
+                        buttonHeight: 36 
+                        
+                        scale: 0.85 
+                        transformOrigin: Item.Left
+                        
                         checkEnabled: false 
                         model: ["All", "User", "System"]
                         currentIndex: 0
-                        selectionMode: "single"
                         onSelectionChanged: function(index, selected) {
                             if (selected) {
                                 processFilters.currentIndex = index;
@@ -1233,21 +1243,45 @@ PluginComponent {
                     }
                 }
 
-                DankTextField {
+                // SEARCH BAR WITH NATIVE INTERNAL ICON & PERSISTENT FOCUS
+                Item {
                     anchors.left: leftControls.right
                     anchors.leftMargin: Theme.spacingM
                     anchors.right: parent.right
                     anchors.verticalCenter: parent.verticalCenter
-                    height: 36
-                    placeholderText: "Search processes or PIDs..."
-                    onTextChanged: processSection.searchText = text
+                    height: 40 
+
+                    DankTextField {
+                        id: searchInput
+                        anchors.fill: parent
+                        
+                        // FIX: Using the widget's native internal icon support
+                        // This handles all the text spacing automatically!
+                        leftIconName: "search"
+                        leftIconColor: Theme.primary
+                        leftIconFocusedColor: Theme.primary
+                        
+                        placeholderText: "Search processes or PIDs..."
+                        onTextChanged: processSection.searchText = text.trim()
+                        
+                        // Focus Logic
+                        focus: true
+                        Component.onCompleted: searchInput.forceActiveFocus()
+                        
+                        // Re-grabs focus if user clicks elsewhere in the dashboard
+                        onActiveFocusChanged: {
+                            if (!activeFocus && rootColumn.visible) {
+                                searchInput.forceActiveFocus()
+                            }
+                        }
+                    }
                 }
             }
 
             // 2. HERO CARD & GAUGES
             Item {
                 width: parent.width
-                height: 95 
+                height: 90 
                 
                 Row {
                     anchors.left: parent.left
@@ -1255,20 +1289,20 @@ PluginComponent {
                     spacing: Theme.spacingL
                     
                     Rectangle {
-                        width: 76; height: 76; radius: 18 
+                        width: 70; height: 70; radius: 16 
                         color: Theme.withAlpha(Theme.primary, 0.15) 
-                        DankIcon { name: "developer_board"; size: 38; anchors.centerIn: parent; color: Theme.primary }
+                        DankIcon { name: "developer_board"; size: 34; anchors.centerIn: parent; color: Theme.primary }
                     }
 
                     Column {
                         anchors.verticalCenter: parent.verticalCenter
                         spacing: 2
-                        StyledText { text: "GPU"; font.pixelSize: 24; font.weight: Font.Bold; color: Theme.surfaceText } 
-                        StyledText { text: root.gpuName; font.pixelSize: 14; color: Theme.surfaceVariantText }
+                        StyledText { text: "GPU"; font.pixelSize: 22; font.weight: Font.Bold; color: Theme.surfaceText } 
+                        StyledText { text: root.gpuName; font.pixelSize: 13; color: Theme.surfaceVariantText }
                         Row {
                             spacing: Theme.spacingS
-                            DankIcon { name: "memory"; size: 14; color: Theme.surfaceVariantText; anchors.verticalCenter: parent.verticalCenter }
-                            StyledText { text: root.processes.length + " procs"; font.pixelSize: 13; color: Theme.surfaceVariantText; anchors.verticalCenter: parent.verticalCenter }
+                            DankIcon { name: "memory"; size: 12; color: Theme.surfaceVariantText; anchors.verticalCenter: parent.verticalCenter }
+                            StyledText { text: root.processes.length + " procs"; font.pixelSize: 12; color: Theme.surfaceVariantText; anchors.verticalCenter: parent.verticalCenter }
                         }
                     }
                 }
@@ -1279,7 +1313,7 @@ PluginComponent {
                     spacing: Theme.spacingL 
                     
                     CircleGauge { 
-                        width: 85; height: 85 
+                        width: 80; height: 80 
                         value: root.gpuUsage / 100
                         label: root.gpuUsage.toFixed(0) + "%"
                         sublabel: "GPU"
@@ -1287,22 +1321,21 @@ PluginComponent {
                     }
                     
                     CircleGauge { 
-                        width: 85; height: 85 
+                        width: 80; height: 80 
                         value: root.vramPercent / 100
                         label: (root.vramUsed / 1024).toFixed(1) + " GB"
-                        sublabel: "VRAM"
+                        sublabel: "Memory"
                         accentColor: Theme.secondary 
                     }
 
                     CircleGauge { 
                         visible: root.temperature > 0
-                        width: 85; height: 85 
+                        width: 80; height: 80 
                         value: Math.min(1, root.temperature / 100)
                         label: root.temperature + "°C"
                         sublabel: "Temp"
                         detail: root.powerUsage > 0 ? (root.powerUsage + "W") : ""
                         accentColor: root.temperature > 85 ? Theme.error : (root.temperature > 70 ? Theme.warning : Theme.info)
-                        detailColor: Theme.surfaceVariantText
                     }
                 }
             }
@@ -1347,8 +1380,10 @@ PluginComponent {
                 property real nameW: (usableW - 24) * 0.5   
                 property real statW: (usableW - 24) * 0.5 / 3 
 
-                property string sortCol: "vram"
-                property bool sortAsc: false
+                // DEFAULT SORT: Name (Ascending)
+                property string sortCol: "name"
+                property bool sortAsc: true 
+                
                 property string searchText: ""
                 property int filterMode: 0 
                 property int matchCount: 0
@@ -1413,7 +1448,6 @@ PluginComponent {
                 }
                 Component.onCompleted: processSection.syncData()
 
-                // REPLACED COLUMN WITH STRICT ANCHORS
                 Item {
                     anchors.fill: parent
                     anchors.margins: Theme.spacingM
@@ -1478,7 +1512,6 @@ PluginComponent {
                                         font.pixelSize: 14 
                                         font.weight: Font.Medium
                                         color: processSection.sortCol === "name" ? Theme.primary : Theme.surfaceVariantText 
-                                        Behavior on color { ColorAnimation { duration: 350 } }
                                     }
                                     Item {
                                         width: 16; height: 16 
@@ -1520,7 +1553,6 @@ PluginComponent {
                                             font.pixelSize: 14 
                                             font.weight: Font.Medium
                                             color: processSection.sortCol === "gpu" ? Theme.primary : Theme.surfaceVariantText 
-                                            Behavior on color { ColorAnimation { duration: 350 } }
                                         }
                                         Item {
                                             width: 16; height: 16
@@ -1553,11 +1585,10 @@ PluginComponent {
                                         anchors.centerIn: parent
                                         spacing: 6
                                         StyledText { 
-                                            text: "VRAM"
+                                            text: "Memory"
                                             font.pixelSize: 14 
                                             font.weight: Font.Medium
                                             color: processSection.sortCol === "vram" ? Theme.primary : Theme.surfaceVariantText 
-                                            Behavior on color { ColorAnimation { duration: 350 } }
                                         }
                                         Item {
                                             width: 16; height: 16
@@ -1594,7 +1625,6 @@ PluginComponent {
                                             font.pixelSize: 14 
                                             font.weight: Font.Medium
                                             color: processSection.sortCol === "pid" ? Theme.primary : Theme.surfaceVariantText 
-                                            Behavior on color { ColorAnimation { duration: 350 } }
                                         }
                                         Item {
                                             width: 16; height: 16
@@ -1617,7 +1647,7 @@ PluginComponent {
                         }
                     }
 
-                    // GLIDING LIST VIEW STRICTLY ANCHORED BELOW HEADER
+                    // GLIDING LIST VIEW
                     DankFlickable {
                         id: processFlickable
                         anchors.top: tableHeader.bottom
@@ -1625,7 +1655,7 @@ PluginComponent {
                         anchors.left: parent.left
                         anchors.right: parent.right
                         anchors.bottom: parent.bottom
-                        clip: true // Enforces strict boundaries
+                        clip: true 
                         
                         contentHeight: processSection.matchCount * 50
                         Behavior on contentHeight { NumberAnimation { duration: 500; easing.type: Easing.OutQuart } }
@@ -1648,9 +1678,9 @@ PluginComponent {
                                     
                                     y: Math.max(0, visualIndex * 50)
 
-                                    Behavior on y { NumberAnimation { duration: 500; easing.type: Easing.OutQuart } }
-                                    Behavior on height { NumberAnimation { duration: 400; easing.type: Easing.OutQuart } }
-                                    Behavior on opacity { NumberAnimation { duration: 300; easing.type: Easing.OutQuart } }
+                                    Behavior on y { NumberAnimation { duration: 550; easing.type: Easing.OutQuart } }
+                                    Behavior on height { NumberAnimation { duration: 450; easing.type: Easing.OutQuart } }
+                                    Behavior on opacity { NumberAnimation { duration: 350; easing.type: Easing.OutQuart } }
 
                                     property int visualIndex: -1
                                     property bool isMatch: false
@@ -1733,7 +1763,7 @@ PluginComponent {
                                                 spacing: 12
                                                 
                                                 DankIcon { 
-                                                    name: "developer_board"
+                                                    name: "developer_board" 
                                                     size: 16 
                                                     color: Theme.surfaceVariantText
                                                     anchors.verticalCenter: parent.verticalCenter 
@@ -1842,11 +1872,19 @@ PluginComponent {
                         }
                     }
 
-                    // Empty State
+                    // EMPTY STATE (FIXED TIMING)
                     Column {
-                        visible: processSection.matchCount === 0
                         anchors.centerIn: parent
                         spacing: Theme.spacingM
+                        opacity: processSection.matchCount === 0 ? 1 : 0
+                        
+                        Behavior on opacity { 
+                            NumberAnimation { 
+                                duration: processSection.matchCount === 0 ? 150 : 0 
+                                easing.type: Easing.InOutQuad 
+                            } 
+                        }
+
                         DankIcon { name: "search_off"; size: 36; color: Theme.surfaceVariantText; anchors.horizontalCenter: parent.horizontalCenter }
                         StyledText { text: "No matching processes"; font.pixelSize: 14; color: Theme.surfaceVariantText; anchors.horizontalCenter: parent.horizontalCenter }
                     }
