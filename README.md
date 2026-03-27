@@ -3,7 +3,7 @@
 [![DMS Version](https://img.shields.io/badge/DMS-Compatible-purple.svg)](https://github.com/Dank-Material-Shell)
 [![Driver](https://img.shields.io/badge/Driver-AMDGPU-orange.svg)](https://www.kernel.org/doc/html/latest/gpu/amdgpu.html)
 [![Backend](https://img.shields.io/badge/Backend-amdgpu__top-blue.svg)](https://github.com/Umio-Yasuno/amdgpu_top)
-[![Maintenance](https://img.shields.io/badge/Maintained%3F-yes-green.svg)](https://github.com/JDKamalakar/DMS-LiveChart.me/graphs/commit-activity)
+[![Maintenance](https://img.shields.io/badge/Maintained%3F-yes-green.svg)](https://github.com/JDKamalakar/DMS-AMD_GPU_Monitor_Revive/graphs/commit-activity)
 
 A high-performance real-time monitoring suite for AMD GPUs, specifically engineered for the **Dank Material Shell** (DMS) environment. Track utilization, VRAM, thermals, and per-process metrics with native material styling.
 
@@ -54,14 +54,14 @@ yay -S amdgpu_top
 The easiest way to install and stay updated:
 1. Open your **DMS Settings**.
 2. Navigate to the **Plugin Manager** tab.
-3. Search for `DMS-LiveChart.me` and click **Install**.
+3. Search for `DMS-AMD_GPU_Monitor_Revive` and click **Install**.
 4. Alternatively, browse the [Dank Linux Plugin Gallery](https://danklinux.com/plugins#/).
 
 #### 🛠️ Manual Installation
 For developers or users who want the latest edge builds:
 1. Clone this repository into your DMS extensions/plugins folder:
    ```bash
-   git clone [https://github.com/JDKamalakar/DMS-LiveChart.me.git](https://github.com/JDKamalakar/DMS-LiveChart.me.git)
+   git clone [https://github.com/JDKamalakar/DMS-AMD_GPU_Monitor_Revive.git](https://github.com/JDKamalakar/DMS-AMD_GPU_Monitor_Revive.git)
 
 ---
 
