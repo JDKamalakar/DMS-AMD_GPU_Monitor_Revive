@@ -1,49 +1,83 @@
-# AMD GPU Monitor
+# <img width="32" height="28" alt="image" src="https://github.com/user-attachments/assets/c94111c7-f60f-48ab-ae07-a7e912a79184" /> AMD GPU Monitor
 
-Real-time AMD GPU monitoring for DankMaterialShell. Tracks usage, VRAM, temperature, power, and per-process GPU utilization.
+[![DMS Version](https://img.shields.io/badge/DMS-Compatible-purple.svg)](https://github.com/Dank-Material-Shell)
+[![Driver](https://img.shields.io/badge/Driver-AMDGPU-orange.svg)](https://www.kernel.org/doc/html/latest/gpu/amdgpu.html)
+[![Backend](https://img.shields.io/badge/Backend-amdgpu__top-blue.svg)](https://github.com/Umio-Yasuno/amdgpu_top)
+[![Maintenance](https://img.shields.io/badge/Maintained%3F-yes-green.svg)](https://github.com/JDKamalakar/DMS-LiveChart.me/graphs/commit-activity)
 
-![Screenshot](screenshot.png)
+A high-performance real-time monitoring suite for AMD GPUs, specifically engineered for the **Dank Material Shell** (DMS) environment. Track utilization, VRAM, thermals, and per-process metrics with native material styling.
 
-## Features
+> [!TIP]
+> This plugin supports multiple display modes including **Legacy**, **Alternate**, **DMS Standard**, and **DMS Extended** to fit any desktop workflow.
 
-- GPU usage monitoring (GFX, Memory, Media Engine)
-- VRAM statistics with capacity display
-- Temperature and power consumption tracking
-- Per-process GPU metrics (VRAM, GFX, CPU usage)
-- Color-coded indicators (normal/warning/critical)
-- Animated progress bars
+---
 
-## Quick Start
+## ✨ Features
 
-**Requirements:** AMD GPU with AMDGPU driver, `amdgpu_top`, QuickShell, DankMaterialShell
+* **📊 Comprehensive Monitoring:** Real-time GFX, Memory, and Media Engine usage.
+* **🌡️ Thermal & Power:** Live tracking of edge/junction temperatures and socket power draw.
+* **💾 VRAM Insights:** Detailed capacity display and allocation statistics.
+* **🔍 Per-Process Metrics:** Identify which applications are consuming VRAM, GFX, and CPU cycles.
+* **🚨 Smart Indicators:** Color-coded warnings (Normal/Warning/Critical) based on configurable thresholds.
+
+---
+
+## 📸 Interface Variations
+
+The monitor adapts to your preferred layout with four distinct UI implementations:
+
+| UI Mode | Description | Status |
+| :--- | :--- | :--- |
+| **DMS Extended** | Maximum data density with full process lists and charts. | <img width="756" height="836" alt="DMS_Extended" src="https://github.com/user-attachments/assets/c7248166-450a-4a7c-96ee-440832a0cb84" /> |
+| **DMS Standard** | The native material look—balanced and clean. | <img width="440" height="700" alt="DMS" src="https://github.com/user-attachments/assets/efd4342a-3464-4a94-b26d-78b8f42369ea" /> |
+| **Alternate** | A modern, high-contrast take on the monitoring panel. | <img width="430" height="780" alt="Alternative" src="https://github.com/user-attachments/assets/dd615692-ecb7-43fe-a497-198844105a79" /> |
+| **Legacy** | Same UI As OG dms-amg-gpu-monitor. | <img width="428" height="647" alt="Legacy" src="https://github.com/user-attachments/assets/1a80ae8a-aae8-4081-bd07-29612cdc52a9" /> |
+
+---
+
+## 🛠️ Installation
+
+### 📋 1. Prerequisites
+Ensure you have the following installed on your system before proceeding:
+* **Driver:** AMDGPU (Standard Linux Kernel driver)
+* **Shell:** QuickShell & DankMaterialShell
+* **Backend:** `amdgpu_top`
 
 ```bash
-# Install amdgpu_top (Arch)
+# Install backend (Arch Linux example)
 yay -S amdgpu_top
-
-# Install plugin
-cp -r AmdGpuMonior ~/.config/DankMaterialShell/plugins/
 ```
 
-## Usage
+### 🚀 2. Plugin Installation
 
-**Bar Widget:** Compact display showing GPU usage % and VRAM (GB)
+#### 🚀 Recommended: DMS Plugin Manager
+The easiest way to install and stay updated:
+1. Open your **DMS Settings**.
+2. Navigate to the **Plugin Manager** tab.
+3. Search for `DMS-LiveChart.me` and click **Install**.
+4. Alternatively, browse the [Dank Linux Plugin Gallery](https://danklinux.com/plugins#/).
 
-**Popout Panel:** Click widget for detailed metrics including device name, engine usage, temperature, power, and process list
+#### 🛠️ Manual Installation
+For developers or users who want the latest edge builds:
+1. Clone this repository into your DMS extensions/plugins folder:
+   ```bash
+   git clone [https://github.com/JDKamalakar/DMS-LiveChart.me.git](https://github.com/JDKamalakar/DMS-LiveChart.me.git)
 
-## Documentation
+---
 
-📖 **[Full Documentation](https://navidagz.github.io/dms-amd-gpu-monitor/docs/)**
+### 🐛 Feedback & Contributions
 
-- [Installation Guide](https://navidagz.github.io/dms-amd-gpu-monitor/docs/installation)
-- [Configuration](https://navidagz.github.io/dms-amd-gpu-monitor/docs/configuration)
-- [Troubleshooting](https://navidagz.github.io/dms-amd-gpu-monitor/docs/troubleshooting)
-- [Technical Details](https://navidagz.github.io/dms-amd-gpu-monitor/docs/technical-details)
+Found a bug or have a feature request? Let’s make this better together.
 
-## License
+* **Report Issues:** [GitHub Issues](https://github.com/JDKamalakar/dms-amd-gpu-monitor-revive/compare)
+* **Contributions:** Pull requests are welcome! Please ensure your code follows the shell's design guidelines.
+
+---
+
+## 📜 License
 
 Part of DankMaterialShell. Check the main repository for license information.
 
-## Credits
+## 🤝 Credits
 
 Built for [DankMaterialShell](https://github.com/DankMaterialShell) • Uses [amdgpu_top](https://github.com/Umio-Yasuno/amdgpu_top)
