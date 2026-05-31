@@ -2,7 +2,7 @@ import QtQuick
 import QtQuick.Layouts
 import Quickshell
 import Quickshell.Io
-import Qt5Compat.GraphicalEffects
+import QtQuick.Effects
 
 import qs.Common
 import qs.Widgets
@@ -556,15 +556,8 @@ PluginComponent {
                 radius: 16
                 color: Theme.withAlpha(Theme.surfaceContainerHigh, Theme.popupTransparency)
                 
-                layer.enabled: true
-                layer.effect: DropShadow {
-                    transparentBorder: true
-                    horizontalOffset: 0
-                    verticalOffset: 3
-                    radius: 12.0
-                    samples: 24
-                    color: Theme.withAlpha(Theme.shadowColor || "#000000", 0.35)
-                }
+                border.width: 1
+                border.color: Qt.rgba(Theme.primary.r, Theme.primary.g, Theme.primary.b, 0.15)
 
                 Row {
                     anchors.fill: parent
@@ -627,15 +620,8 @@ PluginComponent {
                     radius: 12
                     color: root.temperature > 80 ? Theme.withAlpha(Theme.errorHover, Theme.popupTransparency) : Theme.withAlpha(Theme.surfaceContainerHigh, Theme.popupTransparency)
 
-                    layer.enabled: true
-                    layer.effect: DropShadow {
-                        transparentBorder: true
-                        horizontalOffset: 0
-                        verticalOffset: 2
-                        radius: 8.0
-                        samples: 16
-                        color: Theme.withAlpha(Theme.shadowColor || "#000000", 0.3)
-                    }
+                    border.width: 1
+                    border.color: Qt.rgba(Theme.primary.r, Theme.primary.g, Theme.primary.b, 0.15)
 
                     Row {
                         anchors.centerIn: parent
@@ -666,15 +652,8 @@ PluginComponent {
                     radius: 12
                     color: Theme.withAlpha(Theme.surfaceContainerHigh, Theme.popupTransparency)
 
-                    layer.enabled: true
-                    layer.effect: DropShadow {
-                        transparentBorder: true
-                        horizontalOffset: 0
-                        verticalOffset: 2
-                        radius: 8.0
-                        samples: 16
-                        color: Theme.withAlpha(Theme.shadowColor || "#000000", 0.3)
-                    }
+                    border.width: 1
+                    border.color: Qt.rgba(Theme.primary.r, Theme.primary.g, Theme.primary.b, 0.15)
 
                     Row {
                         anchors.centerIn: parent
@@ -706,15 +685,8 @@ PluginComponent {
                 radius: Theme.cornerRadius
                 color: Theme.withAlpha(Theme.surfaceContainerHigh, Theme.popupTransparency)
 
-                layer.enabled: true
-                layer.effect: DropShadow {
-                    transparentBorder: true
-                    horizontalOffset: 0
-                    verticalOffset: 3
-                    radius: 12.0
-                    samples: 24
-                    color: Theme.withAlpha(Theme.shadowColor || "#000000", 0.35)
-                }
+                border.width: 1
+                border.color: Qt.rgba(Theme.primary.r, Theme.primary.g, Theme.primary.b, 0.15)
 
                 Column {
                     id: engineContent
@@ -774,15 +746,8 @@ PluginComponent {
                 radius: Theme.cornerRadius
                 color: Theme.withAlpha(Theme.surfaceContainerHigh, Theme.popupTransparency)
 
-                layer.enabled: true
-                layer.effect: DropShadow {
-                    transparentBorder: true
-                    horizontalOffset: 0
-                    verticalOffset: 3
-                    radius: 12.0
-                    samples: 24
-                    color: Theme.withAlpha(Theme.shadowColor || "#000000", 0.35)
-                }
+                border.width: 1
+                border.color: Qt.rgba(Theme.primary.r, Theme.primary.g, Theme.primary.b, 0.15)
 
                 Column {
                     id: altProcessItems
@@ -1026,15 +991,8 @@ PluginComponent {
                 radius: 16
                 color: Theme.withAlpha(Theme.surfaceContainerHigh, Theme.popupTransparency)
                 
-                layer.enabled: true
-                layer.effect: DropShadow {
-                    transparentBorder: true
-                    horizontalOffset: 0
-                    verticalOffset: 3
-                    radius: 12.0
-                    samples: 24
-                    color: Theme.withAlpha(Theme.shadowColor || "#000000", 0.35)
-                }
+                border.width: 1
+                border.color: Qt.rgba(Theme.primary.r, Theme.primary.g, Theme.primary.b, 0.15)
 
                 Row {
                     anchors.fill: parent
@@ -1130,15 +1088,8 @@ PluginComponent {
                 radius: Theme.cornerRadius
                 color: Theme.withAlpha(Theme.surfaceContainerHigh, Theme.popupTransparency)
 
-                layer.enabled: true
-                layer.effect: DropShadow {
-                    transparentBorder: true
-                    horizontalOffset: 0
-                    verticalOffset: 3
-                    radius: 12.0
-                    samples: 24
-                    color: Theme.withAlpha(Theme.shadowColor || "#000000", 0.35)
-                }
+                border.width: 1
+                border.color: Qt.rgba(Theme.primary.r, Theme.primary.g, Theme.primary.b, 0.15)
 
                 Column {
                     id: engineContent
@@ -1197,15 +1148,8 @@ PluginComponent {
                 radius: Theme.cornerRadius
                 color: Theme.withAlpha(Theme.surfaceContainerHigh, Theme.popupTransparency)
 
-                layer.enabled: true
-                layer.effect: DropShadow {
-                    transparentBorder: true
-                    horizontalOffset: 0
-                    verticalOffset: 3
-                    radius: 12.0
-                    samples: 24
-                    color: Theme.withAlpha(Theme.shadowColor || "#000000", 0.35)
-                }
+                border.width: 1
+                border.color: Qt.rgba(Theme.primary.r, Theme.primary.g, Theme.primary.b, 0.15)
 
                 Column {
                     id: processContent
@@ -1542,7 +1486,20 @@ PluginComponent {
                         
                         onActiveFocusChanged: {
                             if (!activeFocus && rootColumn.visible) {
+                                // Don't steal focus if context menu is open
+                                if (root.contextMenuRef && root.contextMenuRef.visible) return;
                                 searchInput.forceActiveFocus()
+                            }
+                        }
+                        
+                        Timer {
+                            id: focusTimer
+                            interval: 50
+                            running: rootColumn.visible && !searchInput.activeFocus
+                            repeat: true
+                            onTriggered: {
+                                if (root.contextMenuRef && root.contextMenuRef.visible) return;
+                                searchInput.forceActiveFocus();
                             }
                         }
                     }
@@ -1578,13 +1535,12 @@ PluginComponent {
                             asynchronous: true
                             
                             layer.enabled: true
-                            layer.effect: DropShadow {
-                                transparentBorder: true
-                                horizontalOffset: 1
-                                verticalOffset: 2
-                                radius: 4.0
-                                samples: 12
-                                color: Theme.withAlpha(Theme.shadowColor || "#000000", 0.45)
+                            layer.effect: MultiEffect {
+                                shadowEnabled: true
+                                shadowColor: Theme.withAlpha(Theme.shadowColor || "#000000", 0.45)
+                                shadowVerticalOffset: 2
+                                shadowHorizontalOffset: 1
+                                shadowBlur: 0.4
                             }
                         }
                         
@@ -1651,15 +1607,8 @@ PluginComponent {
                 radius: Theme.cornerRadius
                 color: Theme.withAlpha(Theme.surfaceContainerHigh, Theme.popupTransparency)
 
-                layer.enabled: true
-                layer.effect: DropShadow {
-                    transparentBorder: true
-                    horizontalOffset: 0
-                    verticalOffset: 3
-                    radius: 12.0
-                    samples: 24
-                    color: Theme.withAlpha(Theme.shadowColor || "#000000", 0.35)
-                }
+                border.width: 1
+                border.color: Qt.rgba(Theme.primary.r, Theme.primary.g, Theme.primary.b, 0.15)
 
                 Column {
                     id: engineContent
@@ -1689,15 +1638,8 @@ PluginComponent {
                 radius: Theme.cornerRadius
                 color: Theme.withAlpha(Theme.surfaceContainerHigh, Theme.popupTransparency)
                 
-                layer.enabled: true
-                layer.effect: DropShadow {
-                    transparentBorder: true
-                    horizontalOffset: 0
-                    verticalOffset: 3
-                    radius: 12.0
-                    samples: 24
-                    color: Theme.withAlpha(Theme.shadowColor || "#000000", 0.35)
-                }
+                border.width: 1
+                border.color: Qt.rgba(Theme.primary.r, Theme.primary.g, Theme.primary.b, 0.15)
 
                 FileView { id: cmdViewExt; path: "/proc/" + processSection.expandedPid + "/cmdline" }
                 FileView { id: statViewExt; path: "/proc/" + processSection.expandedPid + "/status" }
@@ -2587,15 +2529,8 @@ PluginComponent {
         radius: 16
         color: Theme.surfaceContainerHigh
 
-        layer.enabled: true
-        layer.effect: DropShadow {
-            transparentBorder: true
-            horizontalOffset: 0
-            verticalOffset: 3
-            radius: 12.0
-            samples: 24
-            color: Theme.withAlpha(Theme.shadowColor || "#000000", 0.35)
-        }
+        border.width: 1
+        border.color: Qt.rgba(Theme.primary.r, Theme.primary.g, Theme.primary.b, 0.15)
 
         property string iconName: ""
         property color iconColor: Theme.primary
@@ -2746,13 +2681,12 @@ PluginComponent {
         border.width: 1
 
         layer.enabled: true
-        layer.effect: DropShadow {
-            transparentBorder: true
-            horizontalOffset: 0
-            verticalOffset: 6
-            radius: 16.0
-            samples: 32
-            color: Theme.withAlpha(Theme.shadowColor || "#000000", 0.4)
+        layer.effect: MultiEffect {
+            shadowEnabled: true
+            shadowColor: Theme.withAlpha(Theme.shadowColor || "#000000", 0.4)
+            shadowVerticalOffset: 6
+            shadowHorizontalOffset: 0
+            shadowBlur: 1.0
         }
 
         property var targetProcess: null
