@@ -7,8 +7,7 @@ import qs.Common
 import qs.Widgets
 import qs.Modules.Plugins
 
-// Required for OpacityMask/ColorOverlay
-import Qt5Compat.GraphicalEffects
+import QtQuick.Effects
 
 PluginComponent {
     id: root
@@ -46,10 +45,11 @@ PluginComponent {
                     visible: false
                 }
                 
-                ColorOverlay {
+                MultiEffect {
                     anchors.fill: horizLiveChartLogo
                     source: horizLiveChartLogo
-                    color: Theme.widgetTextColor
+                    colorization: 1.0
+                    colorizationColor: Theme.widgetTextColor
                 }
             }
 
@@ -127,10 +127,11 @@ PluginComponent {
                     visible: false
                 }
                 
-                ColorOverlay {
+                MultiEffect {
                     anchors.fill: vertLiveChartLogo
                     source: vertLiveChartLogo
-                    color: Theme.widgetTextColor
+                    colorization: 1.0
+                    colorizationColor: Theme.widgetTextColor
                 }
             }
             StyledText {
