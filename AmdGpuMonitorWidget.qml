@@ -1,5 +1,7 @@
 import QtQuick
 import QtQuick.Layouts
+import QtQuick.Controls
+import QtQuick.Shapes
 import Quickshell
 import Quickshell.Io
 import QtQuick.Effects
@@ -12,6 +14,27 @@ PluginComponent {
     id: root
     pluginId: "amdGpuMonitorRevive"
 
+    property string variantId: ""
+    property var variantData: null
+
+    onPluginDataChanged: {
+        if (root.variantId && Array.isArray(pluginData?.variants) && pluginData.variants.length)
+            root.variantData = pluginData.variants.find(v => v.id === root.variantId) || root.variantData;
+        root.applyStats();
+    }
+
+    Connections {
+        target: PluginService
+        ignoreUnknownSignals: true
+        function onGlobalVarChanged(pId, varName) {
+            if (pId === root.pluginId) {
+                if (root.variantId && Array.isArray(pluginData?.variants) && pluginData.variants.length)
+                    root.variantData = pluginData.variants.find(v => v.id === root.variantId) || root.variantData;
+                root.applyStats();
+            }
+        }
+    }
+
     property var contextMenuRef: null
     property real gpuUsage: 0.0
     property real vramUsed: 0.0
@@ -20,105 +43,249 @@ PluginComponent {
     property int temperature: 0
     property int powerUsage: 0
     property string gpuName: "AMD GPU"
-    property var processes: [] 
+    property var processes: []
+    readonly property bool statsError: AmdGpuService.statsError
+    property bool gpuSuspended: false
 
     property real gfxUsage: 0.0
     property real memUsage: 0.0
     property real mediaUsage: 0.0
-    
-    property int updateInterval: 4000
+
+    function resetStats() {
+        if (updateTemperatureFallbackProcess.running)
+            updateTemperatureFallbackProcess.running = false;
+        temperatureFallbackTimeoutTimer.stop();
+        gfxUsage = 0.0;
+        memUsage = 0.0;
+        mediaUsage = 0.0;
+        gpuUsage = 0.0;
+        vramUsed = 0.0;
+        vramTotal = 0.0;
+        vramPercent = 0.0;
+        temperature = 0;
+        powerUsage = 0;
+        temperatureSysfsPath = "";
+        processes = [];
+    }
+
+    property int updateInterval: Math.max(1000, parseInt(variantData?.updateInterval ?? pluginData?.updateInterval ?? "4000") || 4000)
+    property string temperatureSysfsPath: ""
     property var toggleProcessList
 
-    property bool minimumWidth: pluginData.minimumWidth !== undefined ? pluginData.minimumWidth : false
-    property string popoutStyle: pluginData.popoutStyle || "dmsExtended"
-    property string customHeroIcon: pluginData.customHeroIcon || ""
-    property string customHeroIconSize: pluginData.customHeroIconSize || "46"
+    property bool minimumWidth: variantData?.minimumWidth ?? pluginData?.minimumWidth ?? false
+    property int gpuIndex: Math.max(0, parseInt(variantData?.gpuIndex ?? "0") || 0)
+    property string gpuPci: (variantData?.gpuPci ?? "").toString()
+    readonly property string safeGpuPci: (root.gpuPci || "").replace(/[^a-zA-Z0-9_]/g, "_")
+    property string popoutStyle: variantData?.popoutStyle ?? pluginData?.popoutStyle ?? "dmsExtended"
+    property string processSort: (variantData?.processSort ?? pluginData?.processSort ?? "vram").toString()
+    property string widgetDisplayMode: (variantData?.widgetDisplayMode ?? pluginData?.widgetDisplayMode ?? "all").toString()
+    readonly property bool isGpuDisabled: {
+        if (root.gpuPci) {
+            if (pluginData?.[`gpuEnabled_${root.safeGpuPci}`] !== undefined)
+                return !pluginData[`gpuEnabled_${root.safeGpuPci}`];
+            if (pluginData?.[`gpuEnabled_${root.gpuPci}`] !== undefined)
+                return !pluginData[`gpuEnabled_${root.gpuPci}`];
+            if (pluginData?.[`gpuDisabled_${root.safeGpuPci}`] !== undefined)
+                return !!pluginData[`gpuDisabled_${root.safeGpuPci}`];
+            if (pluginData?.[`gpuDisabled_${root.gpuPci}`] !== undefined)
+                return !!pluginData[`gpuDisabled_${root.gpuPci}`];
+        }
+        if (pluginData?.gpuEnabled !== undefined)
+            return !pluginData.gpuEnabled;
+        return !!pluginData?.gpuDisabled;
+    }
+    conditionVisible: !root.isGpuDisabled
+    readonly property string customGpuName: {
+        if (root.gpuPci) {
+            if (pluginData?.[`customGpuName_${root.safeGpuPci}`])
+                return pluginData[`customGpuName_${root.safeGpuPci}`].toString().trim();
+            if (pluginData?.[`customGpuName_${root.gpuPci}`])
+                return pluginData[`customGpuName_${root.gpuPci}`].toString().trim();
+        }
+        return (pluginData?.customGpuName || "").toString().trim();
+    }
+    readonly property string effectiveGpuName: customGpuName !== "" ? customGpuName : ((variantData?.name && String(variantData.name)) ? variantData.name : root.gpuName)
+    readonly property string cleanGpuName: customGpuName !== "" ? customGpuName : ((variantData?.originalGpuName && String(variantData.originalGpuName)) ? variantData.originalGpuName : (root.gpuName ? root.gpuName.replace(/\s+(Utilization|VRAM|Temp)$/i, "") : "AMD GPU"))
+    readonly property string widgetIcon: {
+        if (variantData?.icon && String(variantData.icon)) return variantData.icon;
+        if (widgetDisplayMode === "temperature") return "thermostat";
+        if (widgetDisplayMode === "vram") return "developer_board";
+        if (widgetDisplayMode === "utilization") return "speed";
+        return "dashboard";
+    }
+    readonly property string displayName: effectiveGpuName
+    readonly property string customHeroIcon: {
+        if (root.gpuPci) {
+            if (pluginData?.[`customHeroIcon_${root.safeGpuPci}`])
+                return pluginData[`customHeroIcon_${root.safeGpuPci}`].toString().trim();
+            if (pluginData?.[`customHeroIcon_${root.gpuPci}`])
+                return pluginData[`customHeroIcon_${root.gpuPci}`].toString().trim();
+        }
+        return (pluginData?.customHeroIcon || "").toString().trim();
+    }
+    readonly property string customHeroIconSize: {
+        if (root.gpuPci) {
+            if (pluginData?.[`customHeroIconSize_${root.safeGpuPci}`])
+                return pluginData[`customHeroIconSize_${root.safeGpuPci}`].toString().trim();
+            if (pluginData?.[`customHeroIconSize_${root.gpuPci}`])
+                return pluginData[`customHeroIconSize_${root.gpuPci}`].toString().trim();
+        }
+        return (pluginData?.customHeroIconSize || "46").toString().trim();
+    }
+
+    popoutWidth: root.popoutStyle === "dmsExtended" ? 640 : 360
+
+    Component.onCompleted: {
+        AmdGpuService.request(root, root.updateInterval);
+        if (AmdGpuService.devices.length)
+            applyStats();
+    }
+    Component.onDestruction: AmdGpuService.release(root)
+
+    onUpdateIntervalChanged: AmdGpuService.request(root, root.updateInterval)
+    onGpuPciChanged: applyStats()
+    onProcessSortChanged: applyStats()
 
     Connections {
-        target: root
-        function onPluginDataChanged() {
-            root.popoutStyle = pluginData.popoutStyle || "dmsExtended"
-            root.customHeroIcon = pluginData.customHeroIcon || ""
-            root.customHeroIconSize = pluginData.customHeroIconSize || "46"
+        target: AmdGpuService
+        function onDevicesChanged() {
+            root.applyStats();
         }
     }
 
-    // 1. ADD THIS LINE: Tells the DMS window manager exactly how wide to make the surface
-    popoutWidth: root.popoutStyle === "dmsExtended" ? 640 : 360
-
     Timer {
-        id: updateTimer
-        interval: root.updateInterval
-        running: true
-        repeat: true
-        triggeredOnStart: true
-        onTriggered: updateGpuStatsProcess.running = true
+        id: temperatureFallbackTimeoutTimer
+        interval: 3000
+        running: false
+        repeat: false
+        onTriggered: {
+            if (updateTemperatureFallbackProcess.running)
+                updateTemperatureFallbackProcess.running = false;
+        }
     }
 
     Process {
-        id: updateGpuStatsProcess
-        command: ["amdgpu_top", "-J", "-n", "1"]
+        id: updateTemperatureFallbackProcess
+        command: []
         running: false
+
+        onRunningChanged: {
+            if (running) {
+                temperatureFallbackTimeoutTimer.restart();
+            } else {
+                temperatureFallbackTimeoutTimer.stop();
+            }
+        }
 
         stdout: StdioCollector {
             onStreamFinished: {
-                const output = text.trim();
-                const data = JSON.parse(output);
-                const amd_gpu = data.devices[0];
-
-                root.gpuName = amd_gpu["Info"]["DeviceName"] || "AMD GPU";
-
-                root.gfxUsage = parseFloat(amd_gpu.gpu_activity["GFX"].value) || 0.0;
-                root.memUsage = parseFloat(amd_gpu.gpu_activity["Memory"].value) || 0.0;
-                root.mediaUsage = parseFloat(amd_gpu.gpu_activity["MediaEngine"].value) || 0.0;
-                root.gpuUsage = Math.max(root.gfxUsage, root.memUsage, root.mediaUsage);
-                
-                root.vramUsed = parseFloat(amd_gpu["VRAM"]["Total VRAM Usage"].value) || 0.0;
-                root.vramTotal = parseFloat(amd_gpu["VRAM"]["Total VRAM"].value) || 0.0;
-                root.vramPercent = root.vramTotal > 0 
-                    ? (root.vramUsed / root.vramTotal * 100) : 0.0;
-                root.temperature = parseInt(amd_gpu.gpu_metrics.temperature_edge) || 0;
-                root.powerUsage = parseInt(amd_gpu.Sensors["Average Power"].value) || 0;
-
-                if (amd_gpu.fdinfo) {
-                    const processList = [];
-                    
-                    // Iterate through PIDs
-                    Object.keys(amd_gpu.fdinfo).forEach(pid => {
-                        const procInfo = amd_gpu.fdinfo[pid];
-                        
-                        // Access the nested usage.usage structure
-                        const usage = procInfo.usage?.usage;
-                        if (!usage) return;
-                        
-                        const vram = usage.VRAM?.value || 0;
-                        const gfx = usage.GFX?.value || 0;
-                        const cpu = usage.CPU?.value || 0;
-                        
-                        // Only include processes using VRAM or GPU
-                        if (vram > 0 || gfx > 0) {
-                            processList.push({
-                                name: procInfo.name || "Unknown",
-                                pid: parseInt(pid),
-                                vram: vram,
-                                vramUnit: usage.VRAM?.unit || "MiB",
-                                gfx: gfx,
-                                cpu: cpu,
-                                gtt: usage.GTT?.value || 0,
-                                compute: usage.Compute?.value || 0
-                            });
-                        }
-                    });
-                    
-                    // Sort by VRAM usage (highest first)
-                    processList.sort((a, b) => b.vram - a.vram);
-                    
-                    root.processes = processList;
-                }
+                const rawValue = text.trim();
+                const milliDegrees = parseInt(rawValue);
+                if (!isNaN(milliDegrees) && milliDegrees > 0)
+                    root.temperature = Math.round(milliDegrees / 1000);
             }
         }
     }
-    
+
+    function applyStats() {
+        const device = root.gpuPci
+            ? AmdGpuService.deviceByPci(root.gpuPci)
+            : AmdGpuService.deviceByIndex(root.gpuIndex) || AmdGpuService.deviceByIndex(0);
+
+        if (!device) {
+            root.gpuSuspended = false;
+            root.resetStats();
+            root.gpuName = "AMD GPU";
+            return;
+        }
+
+        if (device.suspended) {
+            root.resetStats();
+            root.gpuName = device.name;
+            root.gpuSuspended = true;
+            return;
+        }
+        root.gpuSuspended = false;
+
+        const selectedGpu = device.stats;
+        root.gpuName = device.name;
+
+        try {
+            root.gfxUsage = parseFloat(selectedGpu.gpu_activity?.["GFX"]?.value) || 0.0;
+            root.memUsage = parseFloat(selectedGpu.gpu_activity?.["Memory"]?.value) || 0.0;
+            root.mediaUsage = parseFloat(selectedGpu.gpu_activity?.["MediaEngine"]?.value) || 0.0;
+            root.gpuUsage = Math.max(root.gfxUsage, root.memUsage, root.mediaUsage);
+
+            root.vramUsed = parseFloat(selectedGpu["VRAM"]?.["Total VRAM Usage"]?.value) || 0.0;
+            root.vramTotal = parseFloat(selectedGpu["VRAM"]?.["Total VRAM"]?.value) || 0.0;
+            root.vramPercent = root.vramTotal > 0
+                ? (root.vramUsed / root.vramTotal * 100) : 0.0;
+            const extractedTemperature = root.extractTemperature(selectedGpu);
+            if (extractedTemperature > 0) {
+                root.temperature = extractedTemperature;
+                root.temperatureSysfsPath = "";
+            } else if (!root.refreshTemperatureFromSysfs(selectedGpu)) {
+                root.temperature = 0;
+            }
+            root.powerUsage = parseInt(selectedGpu.Sensors?.["Average Power"]?.value ?? selectedGpu.Sensors?.["Input Power"]?.value) || 0;
+
+            if (selectedGpu.fdinfo) {
+                const processList = [];
+
+                Object.keys(selectedGpu.fdinfo).forEach(pid => {
+                    const procInfo = selectedGpu.fdinfo[pid];
+                    const usage = procInfo.usage?.usage;
+                    if (!usage) return;
+
+                    const vram = usage.VRAM?.value || 0;
+                    const gfx = usage.GFX?.value || 0;
+                    const cpu = usage.CPU?.value || 0;
+
+                    if (vram > 0 || gfx > 0) {
+                        processList.push({
+                            name: procInfo.name || "Unknown",
+                            pid: parseInt(pid),
+                            vram: vram,
+                            vramUnit: usage.VRAM?.unit || "MiB",
+                            gfx: gfx,
+                            cpu: cpu,
+                            gtt: usage.GTT?.value || 0,
+                            compute: usage.Compute?.value || 0
+                        });
+                    }
+                });
+
+                processList.sort(root.compareProcesses);
+                if (!root.processListsEqual(root.processes, processList))
+                    root.processes = processList;
+            } else if (root.processes.length > 0) {
+                root.processes = [];
+            }
+        } catch (e) {
+            console.warn(`amdGpuMonitor: error applying stats: ${e}`);
+        }
+    }
+
+    function processListsEqual(a, b) {
+        if (a.length !== b.length)
+            return false;
+        return JSON.stringify(a) === JSON.stringify(b);
+    }
+
+    function compareProcesses(a, b) {
+        switch (root.processSort) {
+            case "gfx":
+                return b.gfx - a.gfx;
+            case "name":
+                return (a.name || "").localeCompare(b.name || "");
+            case "pid":
+                return a.pid - b.pid;
+            case "vram":
+            default:
+                return b.vram - a.vram;
+        }
+    }
+
     function formatVram() {
         if (root.vramTotal < 1024) {
             return `${root.vramUsed.toFixed(0)}/${root.vramTotal.toFixed(0)} MiB`;
@@ -128,11 +295,139 @@ PluginComponent {
             return `${usedGiB}/${totalGiB} GiB`;
         }
     }
-    
+
+    function extractTemperature(selectedGpu) {
+        const edgeTemp = parseInt(selectedGpu?.gpu_metrics?.temperature_edge);
+        if (!isNaN(edgeTemp) && edgeTemp > 0)
+            return edgeTemp;
+
+        const sensorsEdgeTemp = parseInt(selectedGpu?.Sensors?.["Edge Temperature"]?.value);
+        if (!isNaN(sensorsEdgeTemp) && sensorsEdgeTemp > 0)
+            return sensorsEdgeTemp;
+
+        const gfxTemp = parseInt(selectedGpu?.gpu_metrics?.temperature_gfx);
+        if (!isNaN(gfxTemp) && gfxTemp > 0)
+            return Math.round(gfxTemp / 100);
+
+        return 0;
+    }
+
+    function normalizeSysfsPath(path) {
+        if (typeof path !== "string")
+            return "";
+
+        const normalizedPath = path.trim().replace(/\/+$/, "");
+        return normalizedPath.startsWith("/sys/") ? normalizedPath : "";
+    }
+
+    function normalizePciAddress(address) {
+        if (typeof address !== "string")
+            return "";
+
+        const normalizedAddress = address.trim();
+        return /^[0-9a-fA-F]{4}:[0-9a-fA-F]{2}:[0-9a-fA-F]{2}\.[0-7]$/.test(normalizedAddress)
+            ? normalizedAddress
+            : "";
+    }
+
+    function getTemperatureSysfsPath(selectedGpu) {
+        const infoDevicePath = selectedGpu?.Info?.DevicePath;
+        const nestedDevicePath = selectedGpu?.DevicePath;
+        const legacyDevicePath = selectedGpu?.device_path;
+        const directPath = root.normalizeSysfsPath(
+            (typeof infoDevicePath === "string" ? infoDevicePath : infoDevicePath?.sysfs_path)
+            || (typeof nestedDevicePath === "string" ? nestedDevicePath : nestedDevicePath?.sysfs_path)
+            || (typeof legacyDevicePath === "string" ? legacyDevicePath : legacyDevicePath?.sysfs_path)
+            || selectedGpu?.sysfs_path
+        );
+        if (directPath)
+            return directPath;
+
+        const pciAddress = root.normalizePciAddress(
+            infoDevicePath?.pci
+            || selectedGpu?.PCI
+            || selectedGpu?.pci
+        );
+        if (pciAddress)
+            return `/sys/bus/pci/devices/${pciAddress}`;
+
+        return "";
+    }
+
+    function refreshTemperatureFromSysfs(selectedGpu) {
+        if (updateTemperatureFallbackProcess.running)
+            return true;
+
+        const sysfsPath = root.getTemperatureSysfsPath(selectedGpu);
+        root.temperatureSysfsPath = sysfsPath;
+        if (!sysfsPath)
+            return false;
+
+        updateTemperatureFallbackProcess.command = [
+            "find",
+            `${sysfsPath}/hwmon`,
+            "-mindepth",
+            "2",
+            "-maxdepth",
+            "2",
+            "-type",
+            "f",
+            "-name",
+            "temp1_input",
+            "-exec",
+            "cat",
+            "{}",
+            ";",
+            "-quit"
+        ];
+        updateTemperatureFallbackProcess.running = true;
+        return true;
+    }
+
     function getUsageColor(percent) {
         if (percent > 90) return Theme.tempDanger;
         if (percent > 70) return Theme.tempWarning;
         return Theme.primary;
+    }
+
+    readonly property color currentPillTextColor: {
+        if (root.widgetDisplayMode === "temperature") {
+            if (root.temperature > 85) return Theme.tempDanger;
+            if (root.temperature > 70) return Theme.tempWarning;
+            return Theme.widgetTextColor;
+        } else if (root.widgetDisplayMode === "vram") {
+            if (root.vramPercent > 90) return Theme.tempDanger;
+            if (root.vramPercent > 70) return Theme.tempWarning;
+            return Theme.widgetTextColor;
+        } else if (root.widgetDisplayMode === "utilization") {
+            if (root.gpuUsage > 90) return Theme.tempDanger;
+            if (root.gpuUsage > 70) return Theme.tempWarning;
+            return Theme.widgetTextColor;
+        } else {
+            const maxMetric = Math.max(root.gpuUsage, root.vramPercent);
+            if (maxMetric > 90) return Theme.tempDanger;
+            if (maxMetric > 70) return Theme.tempWarning;
+            return Theme.widgetTextColor;
+        }
+    }
+
+    readonly property color currentPillIconColor: {
+        if (root.statsError) return Theme.error;
+        if (root.widgetDisplayMode === "temperature") {
+            if (root.temperature > 85) return Theme.tempDanger;
+            if (root.temperature > 70) return Theme.tempWarning;
+        } else if (root.widgetDisplayMode === "vram") {
+            if (root.vramPercent > 90) return Theme.tempDanger;
+            if (root.vramPercent > 70) return Theme.tempWarning;
+        } else if (root.widgetDisplayMode === "utilization") {
+            if (root.gpuUsage > 90) return Theme.tempDanger;
+            if (root.gpuUsage > 70) return Theme.tempWarning;
+        } else {
+            const maxMetric = Math.max(root.gpuUsage, root.vramPercent);
+            if (maxMetric > 90) return Theme.tempDanger;
+            if (maxMetric > 70) return Theme.tempWarning;
+        }
+        return Theme.widgetIconColor;
     }
 
     // Helper to extract fields from /proc/[pid]/status
@@ -153,65 +448,134 @@ PluginComponent {
         return text.replace(/\0/g, " ").trim();
     }
 
+    function processCategoryIcon(command) {
+        if (!command) return "developer_board";
+        const cmd = command.toLowerCase();
+        if (cmd.includes("firefox") || cmd.includes("chrome") || cmd.includes("browser") || cmd.includes("chromium") || cmd.includes("brave") || cmd.includes("zen"))
+            return "web";
+        if (cmd.includes("code") || cmd.includes("editor") || cmd.includes("vim") || cmd.includes("nvim") || cmd.includes("subl") || cmd.includes("zed"))
+            return "code";
+        if (cmd.includes("terminal") || cmd.includes("bash") || cmd.includes("zsh") || cmd.includes("fish") || cmd.includes("kitty") || cmd.includes("alacritty") || cmd.includes("foot") || cmd.includes("wezterm"))
+            return "terminal";
+        if (cmd.includes("music") || cmd.includes("audio") || cmd.includes("spotify") || cmd.includes("cider"))
+            return "music_note";
+        if (cmd.includes("video") || cmd.includes("vlc") || cmd.includes("mpv") || cmd.includes("obs") || cmd.includes("kdenlive"))
+            return "play_circle";
+        if (cmd.includes("steam") || cmd.includes("gamescope") || cmd.includes("wine") || cmd.includes("proton") || cmd.includes("lutris") || cmd.includes("heroic") || cmd.includes("game"))
+            return "sports_esports";
+        if (cmd.includes("systemd") || cmd.includes("elogind") || cmd.includes("kernel") || cmd.includes("kthread") || cmd.includes("kworker") || cmd.includes("xwayland") || cmd.includes("wayland") || cmd.includes("niri") || cmd.includes("hyprland") || cmd.includes("kwin"))
+            return "settings";
+        return "memory";
+    }
+
     horizontalBarPill: Component {
-        Row {
-            spacing: Theme.spacingXS
-            DankIcon { 
-                name: "dashboard"
-                size: Theme.barIconSize(root.barThickness, undefined, root.barConfig?.maximizeWidgetIcons, root.barConfig?.iconScale)
-                color: Theme.widgetIconColor
-                anchors.verticalCenter: parent.verticalCenter 
-            }
-            Item {
-                id: textBox
-                anchors.verticalCenter: parent.verticalCenter
-                implicitWidth: root.minimumWidth ? Math.max(textBaseline.width, gpuTextMeasure.width) : gpuTextMeasure.width
-                implicitHeight: gpuText.implicitHeight
-                width: implicitWidth; height: implicitHeight
-                
-                StyledTextMetrics { 
-                    id: textBaseline
-                    font.pixelSize: Theme.barTextSize(root.barThickness, root.barConfig?.fontScale, root.barConfig?.maximizeWidgetText)
-                    text: "88% | 8.8GiB" 
+        Item {
+            id: horizontalPillContainer
+            visible: !root.isGpuDisabled
+            implicitWidth: root.isGpuDisabled ? 0 : horizontalRow.implicitWidth
+            implicitHeight: root.isGpuDisabled ? 0 : horizontalRow.implicitHeight
+            width: implicitWidth
+            height: implicitHeight
+            clip: true
+
+            Row {
+                id: horizontalRow
+                visible: !root.isGpuDisabled
+                spacing: Theme.spacingXS
+                DankIcon { 
+                    name: root.widgetIcon
+                    size: Theme.barIconSize(root.barThickness, undefined, root.barConfig?.maximizeWidgetIcons, root.barConfig?.iconScale)
+                    color: root.currentPillIconColor
+                    opacity: root.gpuSuspended ? 0.5 : 1.0
+                    anchors.verticalCenter: parent.verticalCenter 
                 }
-                
-                StyledTextMetrics {
-                    id: gpuTextMeasure
-                    font.pixelSize: Theme.barTextSize(root.barThickness, root.barConfig?.fontScale, root.barConfig?.maximizeWidgetText)
-                    text: gpuText.text
-                }
-                
-                StyledText {
-                    id: gpuText; anchors.fill: parent
-                    font.pixelSize: Theme.barTextSize(root.barThickness, root.barConfig?.fontScale, root.barConfig?.maximizeWidgetText)
-                    color: Theme.widgetTextColor
-                    text: `${root.gpuUsage.toFixed(0)}% | ${(root.vramUsed / 1024).toFixed(1)}GiB`
-                    horizontalAlignment: Text.AlignHCenter; verticalAlignment: Text.AlignVCenter
-                    wrapMode: Text.NoWrap
-                    elide: Text.ElideRight
+                Item {
+                    id: textBox
+                    anchors.verticalCenter: parent.verticalCenter
+                    implicitWidth: root.minimumWidth ? Math.max(textBaseline.width, gpuTextMeasure.width) : gpuTextMeasure.width
+                    implicitHeight: gpuText.implicitHeight
+                    width: implicitWidth; height: implicitHeight
+                    
+                    StyledTextMetrics { 
+                        id: textBaseline
+                        font.pixelSize: Theme.barTextSize(root.barThickness, root.barConfig?.fontScale, root.barConfig?.maximizeWidgetText)
+                        text: {
+                            if (root.widgetDisplayMode === "temperature") return "99°C";
+                            if (root.widgetDisplayMode === "vram") return "18.8GiB";
+                            if (root.widgetDisplayMode === "utilization") return "100%";
+                            return "88% | 8.8GiB";
+                        }
+                    }
+                    
+                    StyledTextMetrics {
+                        id: gpuTextMeasure
+                        font.pixelSize: Theme.barTextSize(root.barThickness, root.barConfig?.fontScale, root.barConfig?.maximizeWidgetText)
+                        text: gpuText.text
+                    }
+                    
+                    StyledText {
+                        id: gpuText; anchors.fill: parent
+                        font.pixelSize: Theme.barTextSize(root.barThickness, root.barConfig?.fontScale, root.barConfig?.maximizeWidgetText)
+                        color: root.currentPillTextColor
+                        text: {
+                            if (root.widgetDisplayMode === "temperature") {
+                                return root.temperature > 0 ? `${root.temperature}°C` : "N/A";
+                            } else if (root.widgetDisplayMode === "vram") {
+                                return `${(root.vramUsed / 1024).toFixed(1)}GiB`;
+                            } else if (root.widgetDisplayMode === "utilization") {
+                                return `${root.gpuUsage.toFixed(0)}%`;
+                            } else {
+                                return `${root.gpuUsage.toFixed(0)}% | ${(root.vramUsed / 1024).toFixed(1)}GiB`;
+                            }
+                        }
+                        horizontalAlignment: Text.AlignHCenter; verticalAlignment: Text.AlignVCenter
+                        wrapMode: Text.NoWrap
+                        elide: Text.ElideRight
+                    }
                 }
             }
         }
     }
 
     verticalBarPill: Component {
-        Column {
-            spacing: 1
+        Item {
+            id: verticalPillContainer
+            visible: !root.isGpuDisabled
+            implicitWidth: root.isGpuDisabled ? 0 : verticalCol.implicitWidth
+            implicitHeight: root.isGpuDisabled ? 0 : verticalCol.implicitHeight
+            width: implicitWidth
+            height: implicitHeight
+            clip: true
 
-            DankIcon {
-                name: "dashboard"
-                size: Theme.barIconSize(root.barThickness, undefined, root.barConfig?.maximizeWidgetIcons, root.barConfig?.iconScale)
-                color: Theme.widgetIconColor
-                anchors.horizontalCenter: parent.horizontalCenter
-            }
+            Column {
+                id: verticalCol
+                visible: !root.isGpuDisabled
+                spacing: 1
 
-            StyledText {
-                text: `${root.gpuUsage.toFixed(0)}`
-                font.pixelSize: Theme.barTextSize(root.barThickness, root.barConfig?.fontScale, root.barConfig?.maximizeWidgetText)
-                color: Theme.widgetTextColor
-                anchors.horizontalCenter: parent.horizontalCenter
-                wrapMode: Text.NoWrap
-                elide: Text.ElideRight
+                DankIcon {
+                    name: root.widgetIcon
+                    size: Theme.barIconSize(root.barThickness, undefined, root.barConfig?.maximizeWidgetIcons, root.barConfig?.iconScale)
+                    color: root.currentPillIconColor
+                    opacity: root.gpuSuspended ? 0.5 : 1.0
+                    anchors.horizontalCenter: parent.horizontalCenter
+                }
+
+                StyledText {
+                    text: {
+                        if (root.widgetDisplayMode === "temperature") {
+                            return root.temperature > 0 ? `${root.temperature}°` : "N/A";
+                        } else if (root.widgetDisplayMode === "vram") {
+                            return `${(root.vramUsed / 1024).toFixed(1)}G`;
+                        } else {
+                            return `${root.gpuUsage.toFixed(0)}`;
+                        }
+                    }
+                    font.pixelSize: Theme.barTextSize(root.barThickness, root.barConfig?.fontScale, root.barConfig?.maximizeWidgetText)
+                    color: root.currentPillTextColor
+                    anchors.horizontalCenter: parent.horizontalCenter
+                    wrapMode: Text.NoWrap
+                    elide: Text.ElideRight
+                }
             }
         }
     }
@@ -221,6 +585,15 @@ PluginComponent {
         PopoutComponent {
             id: popout
             
+            Connections {
+                target: popout
+                function onVisibleChanged() {
+                    if (!popout.visible && root.contextMenuRef) {
+                        root.contextMenuRef.hide();
+                    }
+                }
+            }
+
             Item {
                 id: popoutContainer
                 width: parent.width
@@ -267,7 +640,7 @@ PluginComponent {
             Row {
                 width: parent.width; spacing: 8; height: 24
                 DankIcon { name: "memory"; size: 18; color: Theme.primary; anchors.verticalCenter: parent.verticalCenter }
-                StyledText { text: root.gpuName; font.pixelSize: Theme.fontSizeLarge; font.bold: true; color: Theme.surfaceText; anchors.verticalCenter: parent.verticalCenter }
+                StyledText { text: root.cleanGpuName; font.pixelSize: Theme.fontSizeLarge; font.bold: true; color: Theme.surfaceText; anchors.verticalCenter: parent.verticalCenter }
             }
 
             // GPU Usage
@@ -437,8 +810,14 @@ PluginComponent {
                         color: Theme.surfaceContainer
                         radius: Theme.cornerRadius
 
+                        ToolTip.text: modelData.name
+                        ToolTip.visible: legacyProcMouseArea.containsMouse && legacyNameLabel.implicitWidth > legacyNameLabel.width
+                        ToolTip.delay: 400
+
                         MouseArea {
+                            id: legacyProcMouseArea
                             anchors.fill: parent
+                            hoverEnabled: true
                             acceptedButtons: Qt.LeftButton | Qt.RightButton
                             onClicked: {
                                 if (mouse.button === Qt.RightButton && root.contextMenuRef) {
@@ -463,6 +842,7 @@ PluginComponent {
                                 spacing: 2
 
                                 StyledText {
+                                    id: legacyNameLabel
                                     width: parent.width
                                     text: modelData.name
                                     color: Theme.surfaceText
@@ -474,7 +854,7 @@ PluginComponent {
                                 StyledText {
                                     text: `PID: ${modelData.pid}`
                                     color: Theme.surfaceVariantText
-                                    font.pixelSize: Theme.fontSizeSmall - 1
+                                    font.pixelSize: Theme.fontSizeSmall
                                 }
                             }
 
@@ -486,7 +866,7 @@ PluginComponent {
                                 StyledText {
                                     text: "VRAM"
                                     color: Theme.surfaceVariantText
-                                    font.pixelSize: Theme.fontSizeSmall - 1
+                                    font.pixelSize: Theme.fontSizeSmall
                                 }
 
                                 StyledText {
@@ -506,7 +886,7 @@ PluginComponent {
                                 StyledText {
                                     text: "GPU"
                                     color: Theme.surfaceVariantText
-                                    font.pixelSize: Theme.fontSizeSmall - 1
+                                    font.pixelSize: Theme.fontSizeSmall
                                 }
 
                                 StyledText {
@@ -525,7 +905,7 @@ PluginComponent {
                                 StyledText {
                                     text: "CPU"
                                     color: Theme.surfaceVariantText
-                                    font.pixelSize: Theme.fontSizeSmall - 1
+                                    font.pixelSize: Theme.fontSizeSmall
                                 }
 
                                 StyledText {
@@ -572,7 +952,7 @@ PluginComponent {
                     }
                     
                     StyledText { 
-                        text: root.gpuName
+                        text: root.cleanGpuName
                         font.pixelSize: Theme.fontSizeMedium
                         font.bold: true
                         color: Theme.surfaceText
@@ -817,6 +1197,10 @@ PluginComponent {
                                 : "transparent"
                             border.width: 1
 
+                            ToolTip.text: modelData.name
+                            ToolTip.visible: altProcMouseArea.containsMouse && altProcNameText.implicitWidth > altProcNameText.width
+                            ToolTip.delay: 400
+
                             DankRipple { id: altRipple; cornerRadius: parent.radius }
 
                             MouseArea {
@@ -854,8 +1238,8 @@ PluginComponent {
                                         spacing: Theme.spacingS
 
                                         DankIcon {
-                                            name: "terminal"
-                                            size: Theme.iconSize - 4
+                                            name: root.processCategoryIcon(modelData.name)
+                                            size: Theme.iconSizeSmall
                                             color: Theme.surfaceText
                                             opacity: 0.8
                                             anchors.verticalCenter: parent.verticalCenter
@@ -871,7 +1255,7 @@ PluginComponent {
                                                 font.weight: Font.Medium
                                                 color: Theme.surfaceText
                                                 elide: Text.ElideRight
-                                                width: parent.parent.width - (Theme.iconSize - 4) - Theme.spacingS
+                                                width: parent.parent.width - Theme.iconSizeSmall - Theme.spacingS
                                             }
                                         }
                                     }
@@ -883,25 +1267,26 @@ PluginComponent {
                                     width: 95
                                     height: 24
                                     radius: Theme.cornerRadius
-                                    color: Qt.rgba(Theme.primary.r, Theme.primary.g, Theme.primary.b, 0.15)
+                                    property real procVramPercent: root.vramTotal > 0 ? ((modelData.vramUnit === "GiB" ? modelData.vram * 1024 : modelData.vram) / root.vramTotal * 100) : 0
+                                    color: Theme.withAlpha(root.getUsageColor(procVramPercent), 0.15)
                                     anchors.verticalCenter: parent.verticalCenter
 
                                     Row {
                                         anchors.centerIn: parent
-                                        spacing: 4
+                                        spacing: Theme.spacingXS
 
                                         DankIcon {
                                             name: "memory"
-                                            size: 12
-                                            color: Theme.primary
+                                            size: Theme.fontSizeSmall
+                                            color: root.getUsageColor(altVramBadge.procVramPercent)
                                             anchors.verticalCenter: parent.verticalCenter
                                         }
 
                                         StyledText {
                                             text: `${modelData.vram} ${modelData.vramUnit}`
-                                            font.pixelSize: Theme.fontSizeSmall - 1
+                                            font.pixelSize: Theme.fontSizeSmall
                                             font.weight: Font.Bold
-                                            color: Theme.primary
+                                            color: root.getUsageColor(altVramBadge.procVramPercent)
                                             anchors.verticalCenter: parent.verticalCenter
                                         }
                                     }
@@ -913,27 +1298,25 @@ PluginComponent {
                                     width: 64
                                     height: 24
                                     radius: Theme.cornerRadius
-                                    color: modelData.gfx > 50
-                                        ? Qt.rgba(Theme.warning.r, Theme.warning.g, Theme.warning.b, 0.12)
-                                        : Qt.rgba(Theme.surfaceText.r, Theme.surfaceText.g, Theme.surfaceText.b, 0.06)
+                                    color: Theme.withAlpha(root.getUsageColor(modelData.gfx), 0.15)
                                     anchors.verticalCenter: parent.verticalCenter
 
                                     Row {
                                         anchors.centerIn: parent
-                                        spacing: 4
+                                        spacing: Theme.spacingXS
 
                                         DankIcon {
                                             name: "speed"
-                                            size: 12
-                                            color: modelData.gfx > 50 ? Theme.warning : Theme.surfaceText
+                                            size: Theme.fontSizeSmall
+                                            color: root.getUsageColor(modelData.gfx)
                                             anchors.verticalCenter: parent.verticalCenter
                                         }
 
                                         StyledText {
                                             text: modelData.gfx > 0 ? `${modelData.gfx}%` : "—"
-                                            font.pixelSize: Theme.fontSizeSmall - 1
+                                            font.pixelSize: Theme.fontSizeSmall
                                             font.weight: Font.Bold
-                                            color: modelData.gfx > 50 ? Theme.warning : Theme.surfaceText
+                                            color: root.getUsageColor(modelData.gfx)
                                             anchors.verticalCenter: parent.verticalCenter
                                         }
                                     }
@@ -950,18 +1333,18 @@ PluginComponent {
 
                                     Row {
                                         anchors.centerIn: parent
-                                        spacing: 4
+                                        spacing: Theme.spacingXS
 
                                         DankIcon {
                                             name: "developer_board"
-                                            size: 12
+                                            size: Theme.fontSizeSmall
                                             color: Theme.surfaceVariantText
                                             anchors.verticalCenter: parent.verticalCenter
                                         }
 
                                         StyledText {
                                             text: modelData.cpu > 0 ? `${modelData.cpu}%` : "—"
-                                            font.pixelSize: Theme.fontSizeSmall - 1
+                                            font.pixelSize: Theme.fontSizeSmall
                                             font.weight: Font.Bold
                                             color: Theme.surfaceVariantText
                                             anchors.verticalCenter: parent.verticalCenter
@@ -988,7 +1371,7 @@ PluginComponent {
             Rectangle {
                 width: parent.width
                 height: 48
-                radius: 16
+                radius: Theme.cornerRadiusL
                 color: Theme.withAlpha(Theme.surfaceContainerHigh, Theme.popupTransparency)
                 
                 border.width: 1
@@ -997,19 +1380,19 @@ PluginComponent {
                 Row {
                     anchors.fill: parent
                     anchors.leftMargin: Theme.spacingM
-                    spacing: 12
+                    spacing: Theme.spacingM
                     
                     DankIcon { 
                         name: "memory"
-                        size: 20
+                        size: Theme.iconSizeMedium
                         color: Theme.primary
                         anchors.verticalCenter: parent.verticalCenter 
                     }
                     
                     StyledText { 
-                        text: root.gpuName
+                        text: root.cleanGpuName
                         font.pixelSize: Theme.fontSizeMedium
-                        font.bold: true
+                        font.weight: Font.Bold
                         color: Theme.surfaceText
                         anchors.verticalCenter: parent.verticalCenter 
                     }
@@ -1220,6 +1603,10 @@ PluginComponent {
                                 : "transparent"
                             border.width: 1
 
+                            ToolTip.text: modelData.name
+                            ToolTip.visible: dmsProcMouseArea.containsMouse && dmsProcNameText.implicitWidth > dmsProcNameText.width
+                            ToolTip.delay: 400
+
                             DankRipple { id: dmsRipple; cornerRadius: parent.radius }
 
                             MouseArea {
@@ -1261,8 +1648,8 @@ PluginComponent {
 
                                         DankIcon {
                                             id: processNameIcon
-                                            name: "terminal"
-                                            size: Theme.iconSize - 4
+                                            name: root.processCategoryIcon(modelData.name)
+                                            size: Theme.iconSizeSmall
                                             color: Theme.surfaceText
                                             opacity: 0.8
                                             anchors.verticalCenter: parent.verticalCenter
@@ -1291,25 +1678,26 @@ PluginComponent {
                                     width: 95
                                     height: 24
                                     radius: Theme.cornerRadius
-                                    color: Qt.rgba(Theme.primary.r, Theme.primary.g, Theme.primary.b, 0.15)
+                                    property real procVramPercent: root.vramTotal > 0 ? ((modelData.vramUnit === "GiB" ? modelData.vram * 1024 : modelData.vram) / root.vramTotal * 100) : 0
+                                    color: Theme.withAlpha(root.getUsageColor(procVramPercent), 0.15)
                                     anchors.verticalCenter: parent.verticalCenter
 
                                     Row {
                                         anchors.centerIn: parent
-                                        spacing: 4
+                                        spacing: Theme.spacingXS
 
                                         DankIcon {
                                             name: "memory"
-                                            size: 12
-                                            color: Theme.primary
+                                            size: Theme.fontSizeSmall
+                                            color: root.getUsageColor(vramBadge.procVramPercent)
                                             anchors.verticalCenter: parent.verticalCenter
                                         }
 
                                         StyledText {
                                             text: `${modelData.vram} ${modelData.vramUnit}`
-                                            font.pixelSize: Theme.fontSizeSmall - 1
+                                            font.pixelSize: Theme.fontSizeSmall
                                             font.weight: Font.Bold
-                                            color: Theme.primary
+                                            color: root.getUsageColor(vramBadge.procVramPercent)
                                             anchors.verticalCenter: parent.verticalCenter
                                         }
                                     }
@@ -1321,57 +1709,25 @@ PluginComponent {
                                     width: 64
                                     height: 24
                                     radius: Theme.cornerRadius
-                                    color: modelData.gfx > 50
-                                        ? Qt.rgba(Theme.warning.r, Theme.warning.g, Theme.warning.b, 0.12)
-                                        : Qt.rgba(Theme.surfaceText.r, Theme.surfaceText.g, Theme.surfaceText.b, 0.06)
+                                    color: Theme.withAlpha(root.getUsageColor(modelData.gfx), 0.15)
                                     anchors.verticalCenter: parent.verticalCenter
 
                                     Row {
                                         anchors.centerIn: parent
-                                        spacing: 4
+                                        spacing: Theme.spacingXS
 
                                         DankIcon {
                                             name: "speed"
-                                            size: 12
-                                            color: modelData.gfx > 50 ? Theme.warning : Theme.surfaceText
+                                            size: Theme.fontSizeSmall
+                                            color: root.getUsageColor(modelData.gfx)
                                             anchors.verticalCenter: parent.verticalCenter
                                         }
 
                                         StyledText {
                                             text: modelData.gfx > 0 ? `${modelData.gfx}%` : "—"
-                                            font.pixelSize: Theme.fontSizeSmall - 1
+                                            font.pixelSize: Theme.fontSizeSmall
                                             font.weight: Font.Bold
-                                            color: modelData.gfx > 50 ? Theme.warning : Theme.surfaceText
-                                            anchors.verticalCenter: parent.verticalCenter
-                                        }
-                                    }
-                                }
-
-                                // CPU badge
-                                Rectangle {
-                                    id: cpuBadge
-                                    width: 64
-                                    height: 24
-                                    radius: Theme.cornerRadius
-                                    color: Qt.rgba(Theme.surfaceText.r, Theme.surfaceText.g, Theme.surfaceText.b, 0.06)
-                                    anchors.verticalCenter: parent.verticalCenter
-
-                                    Row {
-                                        anchors.centerIn: parent
-                                        spacing: 4
-
-                                        DankIcon {
-                                            name: "developer_board"
-                                            size: 12
-                                            color: Theme.surfaceVariantText
-                                            anchors.verticalCenter: parent.verticalCenter
-                                        }
-
-                                        StyledText {
-                                            text: modelData.cpu > 0 ? `${modelData.cpu}%` : "—"
-                                            font.pixelSize: Theme.fontSizeSmall - 1
-                                            font.weight: Font.Bold
-                                            color: Theme.surfaceVariantText
+                                            color: root.getUsageColor(modelData.gfx)
                                             anchors.verticalCenter: parent.verticalCenter
                                         }
                                     }
@@ -1405,28 +1761,28 @@ PluginComponent {
             // 1. TOP HEADER: TITLE, FILTER PILLS, SEARCH BAR
             Item {
                 width: parent.width
-                height: 44 
+                height: Theme.buttonHeightS
 
                 Row {
                     id: leftControls
                     height: parent.height
                     anchors.left: parent.left
                     anchors.verticalCenter: parent.verticalCenter
-                    spacing: Theme.spacingL
+                    spacing: Theme.spacingM
 
                     Row {
                         height: parent.height
                         anchors.verticalCenter: parent.verticalCenter
                         spacing: Theme.spacingS
-                        DankIcon { name: "dashboard"; size: 24; color: Theme.primary; anchors.verticalCenter: parent.verticalCenter }
+                        DankIcon { name: "dashboard"; size: Theme.iconSize; color: Theme.primary; anchors.verticalCenter: parent.verticalCenter }
                         StyledText { text: "Processes"; font.pixelSize: Theme.fontSizeMedium; font.weight: Font.Bold; color: Theme.surfaceText; anchors.verticalCenter: parent.verticalCenter }
                         
-                        Item { width: Theme.spacingS; height: 1 }
+                        Item { width: Theme.spacingXS; height: 1 }
 
                         DankIcon {
                             visible: !!root.toggleProcessList
                             name: "open_in_new"
-                            size: 20
+                            size: Theme.iconSizeMedium
                             color: Theme.primary
                             opacity: extendedProcHeaderMouse.containsMouse ? 1 : 0.6
                             anchors.verticalCenter: parent.verticalCenter
@@ -1445,12 +1801,8 @@ PluginComponent {
                     DankButtonGroup {
                         id: processFilters
                         anchors.verticalCenter: parent.verticalCenter
-                        width: 230 
-                        buttonHeight: 36 
-                        
-                        scale: 0.85 
-                        transformOrigin: Item.Left
-                        
+                        buttonHeight: Theme.buttonHeightXS
+                        size: "small"
                         checkEnabled: false 
                         model: ["All", "User", "System"]
                         currentIndex: 0
@@ -1463,13 +1815,13 @@ PluginComponent {
                     }
                 }
 
-                // SEARCH BAR WITH PERSISTENT FOCUS
+                // Search bar
                 Item {
                     anchors.left: leftControls.right
-                    anchors.leftMargin: Theme.spacingS 
+                    anchors.leftMargin: Theme.spacingM
                     anchors.right: parent.right
                     anchors.verticalCenter: parent.verticalCenter
-                    height: 40 
+                    height: Theme.buttonHeightS
 
                     DankTextField {
                         id: searchInput
@@ -1483,25 +1835,6 @@ PluginComponent {
                         
                         focus: true
                         Component.onCompleted: searchInput.forceActiveFocus()
-                        
-                        onActiveFocusChanged: {
-                            if (!activeFocus && rootColumn.visible) {
-                                // Don't steal focus if context menu is open
-                                if (root.contextMenuRef && root.contextMenuRef.visible) return;
-                                searchInput.forceActiveFocus()
-                            }
-                        }
-                        
-                        Timer {
-                            id: focusTimer
-                            interval: 50
-                            running: rootColumn.visible && !searchInput.activeFocus
-                            repeat: true
-                            onTriggered: {
-                                if (root.contextMenuRef && root.contextMenuRef.visible) return;
-                                searchInput.forceActiveFocus();
-                            }
-                        }
                     }
                 }
             }
@@ -1537,7 +1870,7 @@ PluginComponent {
                             layer.enabled: true
                             layer.effect: MultiEffect {
                                 shadowEnabled: true
-                                shadowColor: Theme.withAlpha(Theme.shadowColor || "#000000", 0.45)
+                                shadowColor: Theme.withAlpha(Theme.shadow || "#000000", 0.45)
                                 shadowVerticalOffset: 2
                                 shadowHorizontalOffset: 1
                                 shadowBlur: 0.4
@@ -1556,12 +1889,12 @@ PluginComponent {
                     Column {
                         anchors.verticalCenter: parent.verticalCenter
                         spacing: 2
-                        StyledText { text: "GPU"; font.pixelSize: Theme.fontSizeLarge * 1.2; font.weight: Font.Bold; color: Theme.surfaceText } 
-                        StyledText { text: root.gpuName; font.pixelSize: Theme.fontSizeSmall; color: Theme.surfaceVariantText }
+                        StyledText { text: "GPU"; font.pixelSize: Theme.fontSizeXLarge; font.weight: Font.Bold; color: Theme.surfaceText } 
+                        StyledText { text: root.cleanGpuName; font.pixelSize: Theme.fontSizeSmall; color: Theme.surfaceVariantText }
                         Row {
                             spacing: Theme.spacingS
-                            DankIcon { name: "memory"; size: 12; color: Theme.surfaceVariantText; anchors.verticalCenter: parent.verticalCenter }
-                            StyledText { text: root.processes.length + " procs"; font.pixelSize: Theme.fontSizeSmall - 1; color: Theme.surfaceVariantText; anchors.verticalCenter: parent.verticalCenter }
+                            DankIcon { name: "developer_board"; size: Theme.fontSizeSmall; color: Theme.surfaceVariantText; anchors.verticalCenter: parent.verticalCenter }
+                            StyledText { text: root.processes.length + " procs"; font.pixelSize: Theme.fontSizeSmall; color: Theme.surfaceVariantText; anchors.verticalCenter: parent.verticalCenter }
                         }
                     }
                 }
@@ -1635,29 +1968,62 @@ PluginComponent {
                 id: processSection
                 width: parent.width
                 height: 380 
-                radius: Theme.cornerRadius
-                color: Theme.withAlpha(Theme.surfaceContainerHigh, Theme.popupTransparency)
+                radius: Theme.cornerRadiusL
+                color: Theme.withAlpha(Theme.surfaceContainerHighest, Theme.popupTransparency)
                 
                 border.width: 1
-                border.color: Qt.rgba(Theme.primary.r, Theme.primary.g, Theme.primary.b, 0.15)
+                border.color: Qt.rgba(Theme.primary.r, Theme.primary.g, Theme.primary.b, 0.18)
 
                 FileView { id: cmdViewExt; path: "/proc/" + processSection.expandedPid + "/cmdline" }
                 FileView { id: statViewExt; path: "/proc/" + processSection.expandedPid + "/status" }
                 FileView { id: memInfoView; path: "/proc/meminfo" }
 
-                property real usableW: width - (Theme.spacingM * 2)
+                readonly property real gpuColW: Math.round(Theme.fontSizeSmall * 6.5)
+                readonly property real vramColW: Math.round(Theme.fontSizeSmall * 7.5)
+                readonly property real pidColW: Math.round(Theme.fontSizeSmall * 5.5)
 
-                property real nameW: (usableW - 24) * 0.5   
-                property real statW: (usableW - 24) * 0.5 / 3 
+                function formatProcessBytes(val, unit) {
+                    let mib = unit === "GiB" ? (val * 1024) : val;
+                    if (mib < 1) return (mib * 1024).toFixed(0) + "K";
+                    if (mib < 1000) return mib.toFixed(1) + "M";
+                    return (mib / 1024).toFixed(1) + "G";
+                }
 
-                property string sortCol: "name"
-                property bool sortAsc: true 
+                property string sortCol: {
+                    if (root.processSort === "gfx") return "gpu";
+                    if (root.processSort === "vram") return "vram";
+                    if (root.processSort === "pid") return "pid";
+                    return "name";
+                }
+                property bool sortAsc: {
+                    if (root.processSort === "gfx" || root.processSort === "vram") return false;
+                    return true;
+                }
                 property string searchText: ""
                 property int filterMode: 0 
                 property int matchCount: 0
                 property int expandedPid: -1
 
                 signal triggerRecalc()
+
+                Connections {
+                    target: root
+                    function onProcessSortChanged() {
+                        if (root.processSort === "gfx") {
+                            processSection.sortCol = "gpu";
+                            processSection.sortAsc = false;
+                        } else if (root.processSort === "vram") {
+                            processSection.sortCol = "vram";
+                            processSection.sortAsc = false;
+                        } else if (root.processSort === "pid") {
+                            processSection.sortCol = "pid";
+                            processSection.sortAsc = true;
+                        } else {
+                            processSection.sortCol = "name";
+                            processSection.sortAsc = true;
+                        }
+                    }
+                }
 
                 onSortColChanged: syncData()
                 onSortAscChanged: syncData()
@@ -1708,42 +2074,36 @@ PluginComponent {
                     let sortedList = sortProcesses(filteredList);
                     processSection.matchCount = sortedList.length;
 
-                    // 3. EFFICIENT SYNC (Maintain identity for animations)
-                    // Mark existing
-                    for(let i=0; i<stableModel.count; i++) stableModel.setProperty(i, "visited", false);
-                    
-                    for(let i=0; i<sortedList.length; i++) {
-                        let p = sortedList[i];
-                        let foundIdx = -1;
-                        for(let j=0; j<stableModel.count; j++) {
-                            if(stableModel.get(j).pid === p.pid) {
-                                foundIdx = j;
-                                break;
-                            }
-                        }
+                    // 3. EFFICIENT SYNC (Update in-place or rebuild cleanly without jumping)
+                    let pids = sortedList.map(p => p.pid);
+                    let currPids = [];
+                    for (let i = 0; i < stableModel.count; i++) {
+                        currPids.push(stableModel.get(i).pid);
+                    }
 
-                        if(foundIdx !== -1) {
-                            stableModel.setProperty(foundIdx, "gfx", p.gfx);
-                            stableModel.setProperty(foundIdx, "vram", p.vram);
-                            stableModel.setProperty(foundIdx, "visited", true);
-                            if (foundIdx !== i) {
-                                stableModel.move(foundIdx, i, 1);
-                            }
-                        } else {
-                            stableModel.insert(i, {
+                    // Check if order changed
+                    let orderMatches = (pids.length === currPids.length) && pids.every((pid, idx) => pid === currPids[idx]);
+
+                    if (orderMatches) {
+                        for (let i = 0; i < sortedList.length; i++) {
+                            let p = sortedList[i];
+                            stableModel.setProperty(i, "gfx", p.gfx);
+                            stableModel.setProperty(i, "vram", p.vram);
+                            stableModel.setProperty(i, "vramUnit", p.vramUnit);
+                            stableModel.setProperty(i, "name", p.name);
+                        }
+                    } else {
+                        stableModel.clear();
+                        for (let i = 0; i < sortedList.length; i++) {
+                            let p = sortedList[i];
+                            stableModel.append({
                                 name: p.name,
                                 pid: p.pid,
                                 vram: p.vram,
                                 vramUnit: p.vramUnit,
-                                gfx: p.gfx,
-                                visited: true
+                                gfx: p.gfx
                             });
                         }
-                    }
-                    
-                    // Remove unvisited
-                    for(let i=stableModel.count-1; i>=0; i--) {
-                        if(stableModel.get(i).visited === false) stableModel.remove(i);
                     }
                 }
 
@@ -1755,337 +2115,202 @@ PluginComponent {
 
                 Item {
                     anchors.fill: parent
-                    anchors.margins: Theme.spacingM
+                    anchors.margins: Theme.spacingS
 
-                    // TABLE HEADER
-                    Item {
+                    // TABLE HEADER WITH SORT CHIPS (Arrow integrated inside the active chip)
+                    Row {
                         id: tableHeader 
                         anchors.top: parent.top
                         anchors.left: parent.left
                         anchors.right: parent.right
-                        height: 36
-                        z: 10 
+                        height: Theme.buttonHeightS
+                        spacing: Theme.groupedListGap || 2
+                        z: 10
 
-                        Rectangle {
-                            id: highlightPill
-                            height: 32
-                            anchors.verticalCenter: parent.verticalCenter
-                            radius: Theme.cornerRadius
-                            color: Theme.withAlpha(Theme.primary, 0.15)
-                            
-                            x: {
-                                if (processSection.sortCol === "name") return nameCol.x;
-                                if (processSection.sortCol === "gpu") return rightCols.x + gpuCol.x;
-                                if (processSection.sortCol === "vram") return rightCols.x + vramCol.x;
-                                if (processSection.sortCol === "pid") return rightCols.x + pidCol.x;
-                                return 0;
-                            }
-                            
-                            width: {
-                                if (processSection.sortCol === "name") return nameCol.width - 4;
-                                if (processSection.sortCol === "gpu") return gpuCol.width - 4;
-                                if (processSection.sortCol === "vram") return vramCol.width - 4;
-                                if (processSection.sortCol === "pid") return pidCol.width - 4;
-                                return 0;
-                            }
-                            
-                            Behavior on x { NumberAnimation { duration: Theme.longDuration; easing.type: Theme.standardEasing } }
-                            Behavior on width { NumberAnimation { duration: Theme.longDuration; easing.type: Theme.standardEasing } }
-                        }
+                        readonly property var sortDefs: [
+                            { key: "name", label: "Name" },
+                            { key: "gpu", label: "GPU" },
+                            { key: "vram", label: "Memory" },
+                            { key: "pid", label: "PID" }
+                        ]
 
-                        Row {
-                            anchors.fill: parent
-                            
+                        Repeater {
+                            model: tableHeader.sortDefs
                             Item {
-                                id: nameCol
-                                width: processSection.nameW
-                                height: parent.height
+                                width: (tableHeader.width - (tableHeader.spacing * 3)) / 4
+                                height: tableHeader.height
 
-                                property bool isSettled: false
+                                readonly property bool isSelected: processSection.sortCol === modelData.key
+                                property bool hovered: sortChipMouse.containsMouse
+                                readonly property bool isFirst: index === 0
+                                readonly property bool isLast: index === (tableHeader.sortDefs.length - 1)
+
+                                readonly property real outerRad: Theme.groupedListOuterRadius || Theme.cornerRadiusL || 12
+                                readonly property real innerRad: Theme.groupedListInnerRadius || Theme.cornerRadiusXS || 4
+                                readonly property real activeRad: Theme.cornerRadiusFull || (height / 2)
+
                                 Rectangle {
-                                    anchors.fill: parent; anchors.margins: 2; radius: Theme.cornerRadius
-                                    // FIX: Border opacity reduced to match the fill strength
-                                    border.color: nameHeaderArea.containsMouse ? Theme.withAlpha(Theme.primary, 0.25) : "transparent"
+                                    id: chipBg
+                                    anchors.fill: parent
+                                    radius: innerRad
+                                    topLeftRadius: parent.isSelected ? parent.activeRad : (parent.isFirst ? parent.outerRad : parent.innerRad)
+                                    bottomLeftRadius: parent.isSelected ? parent.activeRad : (parent.isFirst ? parent.outerRad : parent.innerRad)
+                                    topRightRadius: parent.isSelected ? parent.activeRad : (parent.isLast ? parent.outerRad : parent.innerRad)
+                                    bottomRightRadius: parent.isSelected ? parent.activeRad : (parent.isLast ? parent.outerRad : parent.innerRad)
+
+                                    Behavior on topLeftRadius { NumberAnimation { duration: 150 } }
+                                    Behavior on bottomLeftRadius { NumberAnimation { duration: 150 } }
+                                    Behavior on topRightRadius { NumberAnimation { duration: 150 } }
+                                    Behavior on bottomRightRadius { NumberAnimation { duration: 150 } }
+
+                                    color: parent.isSelected
+                                        ? (Theme.secondaryContainer || Theme.buttonBg)
+                                        : (parent.hovered
+                                            ? Theme.withAlpha(Theme.surfaceVariant, 0.15)
+                                            : (Theme.foregroundColor ? Theme.foregroundColor(Theme.chipSurface) : Theme.withAlpha(Theme.surfaceVariant, 0.2)))
+
                                     border.width: 1
-                                    color: nameHeaderArea.containsMouse && parent.isSettled ? Theme.withAlpha(Theme.primary, 0.12) : "transparent"
-                                    Behavior on color { ColorAnimation { duration: Theme.shortDuration } }
+                                    border.color: parent.isSelected
+                                        ? Qt.rgba(Theme.primary.r, Theme.primary.g, Theme.primary.b, 0.5)
+                                        : Qt.rgba(Theme.primary.r, Theme.primary.g, Theme.primary.b, 0.15)
+
+                                    Behavior on color { ColorAnimation { duration: 150 } }
                                     Behavior on border.color { ColorAnimation { duration: 150 } }
+
+                                    Row {
+                                        anchors.centerIn: parent
+                                        spacing: Theme.spacingXS
+
+                                        DankIcon {
+                                            id: sortIcon
+                                            visible: parent.parent.parent.isSelected
+                                            name: "arrow_upward"
+                                            rotation: processSection.sortAsc ? 0 : 180
+                                            Behavior on rotation { NumberAnimation { duration: 200; easing.type: Easing.OutCubic } }
+                                            size: Theme.iconSizeSmall
+                                            color: Theme.onSecondaryContainer || Theme.buttonText
+                                            anchors.verticalCenter: parent.verticalCenter
+                                        }
+
+                                        StyledText {
+                                            text: modelData.label
+                                            font.pixelSize: Theme.fontSizeSmall
+                                            font.weight: parent.parent.parent.isSelected ? Font.Bold : Font.Medium
+                                            color: parent.parent.parent.isSelected
+                                                ? (Theme.onSecondaryContainer || Theme.buttonText)
+                                                : (Theme.onSurfaceVariant || Theme.surfaceVariantText)
+                                            anchors.verticalCenter: parent.verticalCenter
+                                        }
+                                    }
                                 }
-                                Timer { running: nameHeaderArea.containsMouse; interval: 150; onTriggered: nameCol.isSettled = true }
 
                                 MouseArea {
-                                    id: nameHeaderArea
-                                    anchors.fill: parent; hoverEnabled: true
-                                    onExited: nameCol.isSettled = false
+                                    id: sortChipMouse
+                                    anchors.fill: parent
+                                    hoverEnabled: true
+                                    cursorShape: Qt.PointingHandCursor
                                     onClicked: {
-                                        if (processSection.sortCol === "name") processSection.sortAsc = !processSection.sortAsc;
-                                        else { processSection.sortCol = "name"; processSection.sortAsc = true; }
-                                    }
-                                    onPressed: (m) => nameRipple.trigger(m.x, m.y)
-                                }
-                                DankRipple { id: nameRipple; anchors.fill: parent; cornerRadius: Theme.cornerRadius }
-                                Row {
-                                    anchors.left: parent.left
-                                    anchors.leftMargin: Theme.spacingS
-                                    anchors.verticalCenter: parent.verticalCenter
-                                    spacing: 6
-                                    StyledText { 
-                                        text: "Name"
-                                        font.pixelSize: Theme.fontSizeSmall 
-                                        // FIX: Use Font.Black for heavy boldness
-                                        font.weight: processSection.sortCol === "name" ? Font.Black : Font.Medium
-                                        color: processSection.sortCol === "name" ? Theme.primary : Theme.surfaceVariantText 
-                                    }
-                                    Item {
-                                        width: 16; height: 16 
-                                        DankIcon { 
-                                            anchors.centerIn: parent
-                                            name: "arrow_downward"
-                                            size: 16 
-                                            color: Theme.primary 
-                                            opacity: processSection.sortCol === "name" ? 1 : 0
-                                            Behavior on opacity { NumberAnimation { duration: Theme.shortDuration } } 
-                                            rotation: processSection.sortAsc ? 180 : 0
-                                            Behavior on rotation { NumberAnimation { duration: Theme.mediumDuration; easing.type: Theme.standardEasing } }
+                                        if (processSection.sortCol === modelData.key) {
+                                            processSection.sortAsc = !processSection.sortAsc;
+                                        } else {
+                                            processSection.sortCol = modelData.key;
+                                            processSection.sortAsc = (modelData.key === "name" || modelData.key === "pid");
                                         }
                                     }
                                 }
                             }
-                            
-                            Row {
-                                id: rightCols
-                                width: parent.width * 0.5 - 24
-                                height: parent.height
-
-                                Item {
-                                    id: gpuCol
-                                    width: processSection.statW
-                                    height: parent.height
-
-                                    property bool isSettled: false
-                                    Rectangle {
-                                        anchors.fill: parent; anchors.margins: 2; radius: Theme.cornerRadius
-                                        border.color: gpuHeaderArea.containsMouse ? Theme.withAlpha(Theme.primary, 0.25) : "transparent"
-                                        border.width: 1
-                                        color: gpuHeaderArea.containsMouse && parent.isSettled ? Theme.withAlpha(Theme.primary, 0.12) : "transparent"
-                                        Behavior on color { ColorAnimation { duration: Theme.shortDuration } }
-                                    }
-                                    Timer { running: gpuHeaderArea.containsMouse; interval: 150; onTriggered: gpuCol.isSettled = true }
-
-                                    MouseArea {
-                                        id: gpuHeaderArea
-                                        anchors.fill: parent; hoverEnabled: true
-                                        onExited: gpuCol.isSettled = false
-                                        onClicked: {
-                                            if (processSection.sortCol === "gpu") processSection.sortAsc = !processSection.sortAsc;
-                                            else { processSection.sortCol = "gpu"; processSection.sortAsc = false; }
-                                        }
-                                        onPressed: (m) => gpuRipple.trigger(m.x, m.y)
-                                    }
-                                    DankRipple { id: gpuRipple; anchors.fill: parent; cornerRadius: Theme.cornerRadius }
-                                    Row {
-                                        anchors.centerIn: parent
-                                        spacing: 6
-                                        StyledText { 
-                                            text: "GPU"
-                                            font.pixelSize: Theme.fontSizeSmall 
-                                            font.weight: processSection.sortCol === "gpu" ? Font.Black : Font.Medium
-                                            color: processSection.sortCol === "gpu" ? Theme.primary : Theme.surfaceVariantText 
-                                        }
-                                        Item {
-                                            width: 16; height: 16
-                                            DankIcon { 
-                                                anchors.centerIn: parent
-                                                name: "arrow_downward"
-                                                size: 16 
-                                                color: Theme.primary 
-                                                opacity: processSection.sortCol === "gpu" ? 1 : 0
-                                                Behavior on opacity { NumberAnimation { duration: Theme.shortDuration } }
-                                                rotation: processSection.sortAsc ? 180 : 0
-                                                Behavior on rotation { NumberAnimation { duration: Theme.mediumDuration; easing.type: Theme.standardEasing } }
-                                            }
-                                        }
-                                    }
-                                }
-
-                                Item {
-                                    id: vramCol
-                                    width: processSection.statW
-                                    height: parent.height
-
-                                    property bool isSettled: false
-                                    Rectangle {
-                                        anchors.fill: parent; anchors.margins: 2; radius: Theme.cornerRadius
-                                        border.color: vramHeaderArea.containsMouse ? Theme.withAlpha(Theme.primary, 0.25) : "transparent"
-                                        border.width: 1
-                                        color: vramHeaderArea.containsMouse && parent.isSettled ? Theme.withAlpha(Theme.primary, 0.12) : "transparent"
-                                        Behavior on color { ColorAnimation { duration: Theme.shortDuration } }
-                                    }
-                                    Timer { running: vramHeaderArea.containsMouse; interval: 150; onTriggered: vramCol.isSettled = true }
-
-                                    MouseArea {
-                                        id: vramHeaderArea
-                                        anchors.fill: parent; hoverEnabled: true
-                                        onExited: vramCol.isSettled = false
-                                        onClicked: {
-                                            if (processSection.sortCol === "vram") processSection.sortAsc = !processSection.sortAsc;
-                                            else { processSection.sortCol = "vram"; processSection.sortAsc = false; }
-                                        }
-                                        onPressed: (m) => vramRipple.trigger(m.x, m.y)
-                                    }
-                                    DankRipple { id: vramRipple; anchors.fill: parent; cornerRadius: Theme.cornerRadius }
-                                    Row {
-                                        anchors.centerIn: parent
-                                        spacing: 6
-                                        StyledText { 
-                                            text: "Memory"
-                                            font.pixelSize: Theme.fontSizeSmall 
-                                            font.weight: processSection.sortCol === "vram" ? Font.Black : Font.Medium
-                                            color: processSection.sortCol === "vram" ? Theme.primary : Theme.surfaceVariantText 
-                                        }
-                                        Item {
-                                            width: 16; height: 16
-                                            DankIcon { 
-                                                anchors.centerIn: parent
-                                                name: "arrow_downward"
-                                                size: 16 
-                                                color: Theme.primary 
-                                                opacity: processSection.sortCol === "vram" ? 1 : 0
-                                                Behavior on opacity { NumberAnimation { duration: Theme.shortDuration } }
-                                                rotation: processSection.sortAsc ? 180 : 0
-                                                Behavior on rotation { NumberAnimation { duration: Theme.mediumDuration; easing.type: Theme.standardEasing } }
-                                            }
-                                        }
-                                    }
-                                }
-
-                                Item {
-                                    id: pidCol
-                                    width: processSection.statW
-                                    height: parent.height
-
-                                    property bool isSettled: false
-                                    Rectangle {
-                                        anchors.fill: parent; anchors.margins: 2; radius: Theme.cornerRadius
-                                        border.color: pidHeaderArea.containsMouse ? Theme.withAlpha(Theme.primary, 0.25) : "transparent"
-                                        border.width: 1
-                                        color: pidHeaderArea.containsMouse && parent.isSettled ? Theme.withAlpha(Theme.primary, 0.12) : "transparent"
-                                        Behavior on color { ColorAnimation { duration: Theme.shortDuration } }
-                                    }
-                                    Timer { running: pidHeaderArea.containsMouse; interval: 150; onTriggered: pidCol.isSettled = true }
-
-                                    MouseArea {
-                                        id: pidHeaderArea
-                                        anchors.fill: parent; hoverEnabled: true
-                                        onExited: pidCol.isSettled = false
-                                        onClicked: {
-                                            if (processSection.sortCol === "pid") processSection.sortAsc = !processSection.sortAsc;
-                                            else { processSection.sortCol = "pid"; processSection.sortAsc = true; }
-                                        }
-                                        onPressed: (m) => pidRipple.trigger(m.x, m.y)
-                                    }
-                                    DankRipple { id: pidRipple; anchors.fill: parent; cornerRadius: Theme.cornerRadius }
-                                    Row {
-                                        anchors.centerIn: parent
-                                        spacing: 6
-                                        StyledText { 
-                                            text: "PID"
-                                            font.pixelSize: Theme.fontSizeSmall 
-                                            font.weight: processSection.sortCol === "pid" ? Font.Black : Font.Medium
-                                            color: processSection.sortCol === "pid" ? Theme.primary : Theme.surfaceVariantText 
-                                        }
-                                        Item {
-                                            width: 16; height: 16
-                                            DankIcon { 
-                                                anchors.centerIn: parent
-                                                name: "arrow_downward"
-                                                size: 16 
-                                                color: Theme.primary 
-                                                opacity: processSection.sortCol === "pid" ? 1 : 0
-                                                Behavior on opacity { NumberAnimation { duration: Theme.shortDuration } }
-                                                rotation: processSection.sortAsc ? 180 : 0
-                                                Behavior on rotation { NumberAnimation { duration: Theme.mediumDuration; easing.type: Theme.standardEasing } }
-                                            }
-                                        }
-                                    }
-                                }
-                            }
-                            
-                            Item { width: 24; height: parent.height } 
                         }
                     }
 
                     // GLIDING LIST VIEW
-                    ListView {
+                    DankListView {
                         id: processListView
                         anchors.top: tableHeader.bottom
-                        anchors.topMargin: Theme.spacingM
+                        anchors.topMargin: Theme.spacingS
                         anchors.left: parent.left
                         anchors.right: parent.right
                         anchors.bottom: parent.bottom
                         clip: true
                         model: stableModel
-                        spacing: 2
+                        spacing: Theme.groupedListGap || 2
                         boundsBehavior: Flickable.StopAtBounds
 
-                        add: Transition { 
-                            NumberAnimation { property: "y"; from: 48; duration: 400; easing.type: Easing.OutBack } 
-                            NumberAnimation { properties: "opacity,scale"; from: 0; to: 1; duration: 300; easing.type: Easing.OutCubic } 
+                        add: Transition {
+                            NumberAnimation { property: "opacity"; from: 0; to: 1; duration: Theme.shortDuration; easing.type: Theme.standardEasing }
+                            NumberAnimation { property: "y"; from: (processListView.y + 10); duration: Theme.shortDuration; easing.type: Theme.standardEasing }
                         }
-                        remove: Transition { 
-                            NumberAnimation { property: "y"; to: 48; duration: 300; easing.type: Easing.InBack } 
-                            NumberAnimation { properties: "opacity,scale"; to: 0; duration: 250 } 
+                        remove: Transition {
+                            NumberAnimation { property: "opacity"; to: 0; duration: Theme.shortDuration; easing.type: Theme.standardEasing }
                         }
-                        displaced: Transition { 
-                            NumberAnimation { properties: "y"; duration: 450; easing.type: Easing.OutCubic } 
-                        }
-                        move: Transition { 
-                            NumberAnimation { properties: "y"; duration: 450; easing.type: Easing.OutCubic } 
-                            PropertyAnimation { property: "z"; from: 100; to: 1; duration: 450 }
-                        }
-                        moveDisplaced: Transition { 
-                            NumberAnimation { properties: "y"; duration: 450; easing.type: Easing.OutCubic } 
+                        displaced: Transition {
+                            NumberAnimation { properties: "y"; duration: Theme.shortDuration; easing.type: Theme.standardEasing }
                         }
 
-                        delegate: Rectangle {
+                        delegate: Item {
                             id: procDelegate
                             anchors.left: parent ? parent.left : undefined
                             anchors.right: parent ? parent.right : undefined
-                            radius: Theme.cornerRadius
                             clip: true
                             readonly property bool isExpanded: processSection.expandedPid === model.pid
-                            
+                            readonly property bool isSelected: isExpanded
+                            property bool hovered: procMouseArea.containsMouse
 
-                            // Match official DMS height logic
-                            height: isExpanded ? (48 + expandedRect.height + Theme.spacingXS) : 48
+                            readonly property real baseRowH: Theme.listItemHeight || 48
+                            height: isExpanded ? (baseRowH + expandedRect.height + Theme.spacingS) : baseRowH
                             opacity: 1
                             visible: true
 
                             Behavior on height { NumberAnimation { duration: Theme.shortDuration; easing.type: Theme.standardEasing } }
                             Behavior on opacity { NumberAnimation { duration: Theme.shortDuration; easing.type: Theme.standardEasing } }
 
-                            property bool isSettled: false
-                            border.color: isSelected ? Qt.rgba(Theme.primary.r, Theme.primary.g, Theme.primary.b, 0.3) : (procMouseArea.containsMouse ? Theme.withAlpha(Theme.primary, 0.25) : "transparent")
-                            border.width: 1
-                            color: isSelected ? Qt.rgba(Theme.primary.r, Theme.primary.g, Theme.primary.b, 0.15) : (procMouseArea.containsMouse && isSettled ? Theme.withAlpha(Theme.surfaceText, 0.06) : "transparent")
-                            readonly property bool isSelected: processSection.expandedPid === model.pid // Official matches expanded to "selected" visual
+                            property bool isFirst: index === 0
+                            property bool isLast: index === (processListView.count - 1)
+                            readonly property real outerRad: Theme.groupedListOuterRadius || Theme.cornerRadiusL
+                            readonly property real innerRad: Theme.groupedListInnerRadius || Theme.cornerRadiusXS
 
-                            Timer { running: procMouseArea.containsMouse; interval: 150; onTriggered: procDelegate.isSettled = true }
-                            
-                            Behavior on color { ColorAnimation { duration: 250 } }
+                            Rectangle {
+                                id: procRowBg
+                                anchors.fill: parent
+                                clip: true
+                                radius: innerRad
+                                topLeftRadius: isFirst ? outerRad : innerRad
+                                topRightRadius: isFirst ? outerRad : innerRad
+                                bottomLeftRadius: isLast ? outerRad : innerRad
+                                bottomRightRadius: isLast ? outerRad : innerRad
 
-                            DankRipple { id: extRipple; cornerRadius: parent.radius }
+                                color: procDelegate.isSelected
+                                    ? (Theme.selectedContainer || Qt.rgba(Theme.primary.r, Theme.primary.g, Theme.primary.b, 0.18))
+                                    : (procDelegate.hovered
+                                        ? Theme.withAlpha(Theme.surfaceVariant, 0.12)
+                                        : (Theme.foregroundColor ? Theme.foregroundColor(Theme.chipSurface) : Qt.rgba(Theme.secondary.r, Theme.secondary.g, Theme.secondary.b, 0.04)))
 
+                                border.width: 1
+                                border.color: procDelegate.isSelected
+                                    ? Qt.rgba(Theme.primary.r, Theme.primary.g, Theme.primary.b, 0.5)
+                                    : (procDelegate.hovered ? Theme.withAlpha(Theme.primary, 0.3) : Qt.rgba(Theme.primary.r, Theme.primary.g, Theme.primary.b, 0.15))
 
+                                Behavior on color { ColorAnimation { duration: 150 } }
+                                Behavior on border.color { ColorAnimation { duration: 150 } }
+
+                                DankRipple { 
+                                    id: extRipple
+                                    anchors.fill: parent
+                                    cornerRadius: isFirst || isLast ? outerRad : innerRad
+                                    rippleColor: Theme.primary 
+                                }
+                            }
+
+                            ToolTip.text: model.name
+                            ToolTip.visible: procMouseArea.containsMouse && procTitleText.implicitWidth > procTitleText.width
+                            ToolTip.delay: 400
 
                             MouseArea {
                                 id: procMouseArea
                                 anchors.fill: parent
                                 hoverEnabled: true
                                 acceptedButtons: Qt.LeftButton | Qt.RightButton
-                                onExited: procDelegate.isSettled = false
-                                onPressed: extRipple.trigger(mouse.x, mouse.y)
-                                onClicked: {
+                                onPressed: (m) => extRipple.trigger(m.x, m.y)
+                                onClicked: function(mouse) {
                                     if (mouse.button === Qt.RightButton && root.contextMenuRef) {
                                         let globalPos = mapToItem(root.contextMenuRef.parent, mouse.x, mouse.y);
                                         root.contextMenuRef.show(globalPos.x, globalPos.y, {
@@ -2094,184 +2319,123 @@ PluginComponent {
                                             cmdline: root.formatCmdline(cmdViewExt.text()) || model.name
                                         });
                                     } else {
-                                        processSection.expandedPid = isExpanded ? -1 : model.pid
+                                        processSection.expandedPid = isExpanded ? -1 : model.pid;
                                     }
                                 }
                             }
+
                             RowLayout {
                                 anchors.left: parent.left
                                 anchors.right: parent.right
-                                height: 48
-                                spacing: 0
+                                anchors.top: parent.top
+                                height: procDelegate.baseRowH
+                                anchors.leftMargin: Theme.spacingM
+                                anchors.rightMargin: Theme.spacingM
+                                spacing: Theme.spacingS
+
+                                DankIcon {
+                                    name: root.processCategoryIcon(model.name)
+                                    size: Theme.iconSize
+                                    color: procDelegate.isSelected ? (Theme.onSelectedContainer || Theme.primary) : (Theme.onSurface || Theme.surfaceText)
+                                }
 
                                 Item {
-                                    width: processSection.nameW
-                                    height: parent.height
-                                    Row {
+                                    Layout.fillWidth: true
+                                    Layout.minimumWidth: 0
+                                    height: procDelegate.baseRowH
+
+                                    // When unexpanded: only show one clean title vertically centered
+                                    StyledText {
+                                        id: procTitleText
                                         anchors.left: parent.left
-                                        anchors.leftMargin: Theme.spacingS
+                                        anchors.right: parent.right
                                         anchors.verticalCenter: parent.verticalCenter
-                                        spacing: 12
-                                        
-                                        DankIcon { 
-                                            name: "developer_board" 
-                                            size: 16 
-                                            color: Theme.surfaceVariantText
-                                            anchors.verticalCenter: parent.verticalCenter 
-                                        }
-                                        
-                                        StyledText { 
-                                            id: procNameTextExt
-                                            text: model.name
-                                            font.pixelSize: Theme.fontSizeSmall - 1
-                                            font.weight: Font.Medium
-                                            color: Theme.surfaceText
-                                            elide: Text.ElideRight
-                                            Layout.fillWidth: true
-                                            Layout.maximumWidth: processSection.nameW - 40
-                                            Layout.alignment: Qt.AlignVCenter 
-                                        }
+                                        text: model.name
+                                        font.pixelSize: Theme.fontSizeMedium
+                                        font.weight: Font.Medium
+                                        color: procDelegate.isSelected ? (Theme.onSelectedContainer || Theme.surfaceText) : (Theme.onSurface || Theme.surfaceText)
+                                        elide: Text.ElideRight
+                                        maximumLineCount: 1
                                     }
                                 }
 
-                                RowLayout {
-                                    id: statsRowExt
-                                    Layout.preferredWidth: parent.width * 0.5 - 24
-                                    Layout.fillHeight: true
-                                    spacing: 0
-
-                                    // GPU Stat
-                                    Item {
-                                        Layout.preferredWidth: processSection.statW
-                                        Layout.fillHeight: true
-                                        Rectangle {
-                                            width: 70; height: 24; radius: Theme.cornerRadius
-                                            anchors.centerIn: parent
-                                            color: Theme.withAlpha(root.getUsageColor(model.gfx), 0.15)
-                                            StyledText {
-                                                anchors.centerIn: parent
-                                                text: model.gfx > 0 ? `${model.gfx.toFixed(0)}%` : "0%"
-                                                font.pixelSize: Theme.fontSizeSmall - 2
-                                                font.weight: Font.Bold
-                                                color: root.getUsageColor(model.gfx)
-                                            }
-                                        }
-                                    }
-
-                                    // VRAM Stat
-                                    Item {
-                                        Layout.preferredWidth: processSection.statW
-                                        Layout.fillHeight: true
-                                        Rectangle {
-                                            width: 70; height: 24; radius: Theme.cornerRadius
-                                            anchors.centerIn: parent
-                                            property real procVramPercent: root.vramTotal > 0 ? ((model.vramUnit === "GiB" ? model.vram * 1024 : model.vram) / root.vramTotal * 100) : 0
-                                            color: Theme.withAlpha(root.getUsageColor(procVramPercent), 0.15)
-                                            StyledText {
-                                                anchors.centerIn: parent
-                                                font.pixelSize: Theme.fontSizeSmall - 2
-                                                font.weight: Font.Bold
-                                                text: {
-                                                    let v = model.vram;
-                                                    let u = model.vramUnit;
-                                                    if (u === "MiB" && v > 1000) return (v / 1024).toFixed(1) + " GB";
-                                                    return v + " " + (u === "MiB" ? "MB" : "GB");
-                                                }
-                                                color: root.getUsageColor(parent.procVramPercent)
-                                            }
-                                        }
-                                    }
-
-                                    // PID Stat
-                                    Item {
-                                        Layout.preferredWidth: processSection.statW
-                                        Layout.fillHeight: true
-                                        StyledText {
-                                            anchors.centerIn: parent
-                                            text: model.pid
-                                            font.pixelSize: Theme.fontSizeSmall - 1
-                                            color: Theme.surfaceVariantText
-                                        }
-                                    }
+                                // GPU Stat column
+                                StyledText {
+                                    Layout.preferredWidth: processSection.gpuColW
+                                    text: (model.gfx || 0).toFixed(1) + "%"
+                                    font.pixelSize: Theme.fontSizeSmall
+                                    color: root.getUsageColor(model.gfx)
+                                    horizontalAlignment: Text.AlignRight
                                 }
 
-                                // Expand Icon
-                                Item {
-                                    Layout.preferredWidth: 24
-                                    Layout.fillHeight: true
-                                    DankIcon {
-                                        name: "expand_more"
-                                        size: 18
-                                        color: procDelegate.isExpanded ? Theme.primary : Theme.surfaceVariantText
-                                        anchors.centerIn: parent
-                                        rotation: procDelegate.isExpanded ? 180 : 0
-                                        Behavior on rotation { NumberAnimation { duration: Theme.mediumDuration; easing.type: Theme.standardEasing } }
-                                        Behavior on color { ColorAnimation { duration: Theme.shortDuration } }
-                                    }
+                                // VRAM Stat column
+                                StyledText {
+                                    Layout.preferredWidth: processSection.vramColW
+                                    text: processSection.formatProcessBytes(model.vram, model.vramUnit)
+                                    font.pixelSize: Theme.fontSizeSmall
+                                    property real procVramPercent: root.vramTotal > 0 ? ((model.vramUnit === "GiB" ? model.vram * 1024 : model.vram) / root.vramTotal * 100) : 0
+                                    color: root.getUsageColor(procVramPercent)
+                                    horizontalAlignment: Text.AlignRight
+                                }
+
+                                // PID column
+                                StyledText {
+                                    Layout.preferredWidth: processSection.pidColW
+                                    text: model.pid.toString()
+                                    font.pixelSize: Theme.fontSizeSmall
+                                    color: Theme.onSurfaceVariant || Theme.surfaceVariantText
+                                    horizontalAlignment: Text.AlignRight
                                 }
                             }
 
-                            // Details Section - MATCHING OFFICIAL DMS STYLE
+                            // Details Section (When Row is Expanded)
                             Rectangle {
                                 id: expandedRect
-                                width: parent.width - Theme.spacingM * 2
-                                height: procDelegate.isExpanded ? (expandedContent.implicitHeight + Theme.spacingS * 2) : 0
+                                anchors.left: parent.left
+                                anchors.right: parent.right
                                 anchors.top: parent.top
-                                anchors.topMargin: 48
-                                anchors.horizontalCenter: parent.horizontalCenter
-                                radius: Theme.cornerRadius - 2
-                                color: Qt.rgba(Theme.surfaceContainerHigh.r, Theme.surfaceContainerHigh.g, Theme.surfaceContainerHigh.b, 0.6)
+                                anchors.topMargin: procDelegate.baseRowH
+                                anchors.leftMargin: Theme.spacingM
+                                anchors.rightMargin: Theme.spacingM
+                                height: procDelegate.isExpanded ? (expandedContent.implicitHeight + Theme.spacingS * 2) : 0
+                                radius: innerRad
+                                color: Theme.withAlpha(Theme.surfaceContainerHighest, 0.5)
                                 clip: true
                                 visible: procDelegate.isExpanded
                                 
                                 Behavior on height { NumberAnimation { duration: Theme.shortDuration; easing.type: Theme.standardEasing } }
                                 opacity: procDelegate.isExpanded ? 1 : 0
-                                Behavior on opacity { NumberAnimation { duration: 200 } }
+                                Behavior on opacity { NumberAnimation { duration: 150 } }
 
-                                Column {
+                                ColumnLayout {
                                     id: expandedContent
-                                    anchors.left: parent.left
-                                    anchors.right: parent.right
-                                    anchors.top: parent.top
+                                    anchors.fill: parent
                                     anchors.margins: Theme.spacingS
                                     spacing: Theme.spacingXS
 
-                                    // Full Command Row
                                     RowLayout {
-                                        width: parent.width
+                                        Layout.fillWidth: true
                                         spacing: Theme.spacingS
-                                        
-                                        StyledText {
-                                            text: "Full Command:"
-                                            font.pixelSize: Theme.fontSizeSmall - 2
-                                            font.weight: Font.Bold
-                                            color: Theme.surfaceVariantText
-                                            Layout.alignment: Qt.AlignVCenter
-                                        }
 
                                         StyledText {
-                                            id: cmdText
                                             Layout.fillWidth: true
                                             text: root.formatCmdline(cmdViewExt.text()) || model.name
-                                            font.pixelSize: Theme.fontSizeSmall - 2
-                                            font.family: "Monospace"
+                                            font.pixelSize: Theme.fontSizeSmall
+                                            font.family: Theme.monoFontFamily || "monospace"
                                             color: Theme.surfaceText
-                                            elide: Text.ElideMiddle
-                                            Layout.alignment: Qt.AlignVCenter
+                                            wrapMode: Text.WrapAnywhere
                                         }
 
                                         Rectangle {
-                                            id: copyBtn
-                                            Layout.preferredWidth: 24
-                                            Layout.preferredHeight: 24
-                                            radius: Theme.cornerRadius - 2
+                                            Layout.preferredWidth: Theme.buttonHeightXS || 28
+                                            Layout.preferredHeight: Theme.buttonHeightXS || 28
+                                            radius: height / 2
                                             color: copyMouseArea.containsMouse ? Theme.withAlpha(Theme.primary, 0.15) : "transparent"
-                                            Layout.alignment: Qt.AlignVCenter
-                                            
+
                                             DankIcon {
                                                 anchors.centerIn: parent
                                                 name: "content_copy"
-                                                size: 14
+                                                size: Theme.iconSizeSmall
                                                 color: copyMouseArea.containsMouse ? Theme.primary : Theme.surfaceVariantText
                                             }
 
@@ -2282,7 +2446,7 @@ PluginComponent {
                                                 cursorShape: Qt.PointingHandCursor
                                                 onClicked: {
                                                     try {
-                                                        Quickshell.execDetached(["dms", "cl", "copy", cmdText.text]);
+                                                        Quickshell.execDetached(["dms", "cl", "copy", root.formatCmdline(cmdViewExt.text()) || model.name]);
                                                     } catch(e) {
                                                         console.log("Clipboard copy failed:", e);
                                                     }
@@ -2291,65 +2455,31 @@ PluginComponent {
                                         }
                                     }
 
-                                    // System Stats Row
-                                    Row {
-                                        spacing: Theme.spacingL
-                                        height: childrenRect.height
-                                        
-                                        Row {
-                                            spacing: Theme.spacingXS
-                                            anchors.verticalCenter: parent.verticalCenter
-                                            StyledText {
-                                                text: "PPID:"
-                                                font.pixelSize: Theme.fontSizeSmall - 2
-                                                font.weight: Font.Bold
-                                                color: Theme.surfaceVariantText
-                                                anchors.verticalCenter: parent.verticalCenter
-                                            }
-                                            StyledText {
-                                                text: root.extractProcField(statViewExt.text(), "PPid") || "--"
-                                                font.pixelSize: Theme.fontSizeSmall - 2
-                                                font.family: "Monospace"
-                                                color: Theme.surfaceText
-                                                anchors.verticalCenter: parent.verticalCenter
-                                            }
-                                        }
-
-                                        Row {
-                                            spacing: Theme.spacingXS
-                                            anchors.verticalCenter: parent.verticalCenter
-                                            StyledText {
-                                                text: "Mem:"
-                                                font.pixelSize: Theme.fontSizeSmall - 2
-                                                font.weight: Font.Bold
-                                                color: Theme.surfaceVariantText
-                                                anchors.verticalCenter: parent.verticalCenter
-                                            }
-                                            StyledText {
-                                                property string vmRss: root.extractProcField(statViewExt.text(), "VmRSS")
-                                                text: {
-                                                    if (!vmRss) return "--%";
-                                                    let rssKb = parseInt(vmRss.replace(/[^0-9]/g, ""));
-                                                    if (isNaN(rssKb)) return "--%";
-                                                    let memTotalStr = root.extractProcField(memInfoView.text(), "MemTotal");
-                                                    let memTotalKb = parseInt(memTotalStr.replace(/[^0-9]/g, ""));
-                                                    if (isNaN(memTotalKb) || memTotalKb === 0) return "--%";
-                                                    let pct = (rssKb / memTotalKb * 100).toFixed(1);
-                                                    return pct + "%";
+                                    StyledText {
+                                        Layout.fillWidth: true
+                                        text: {
+                                            const ppid = root.extractProcField(statViewExt.text(), "PPid") || "--";
+                                            let memPct = "--%";
+                                            const vmRss = root.extractProcField(statViewExt.text(), "VmRSS");
+                                            if (vmRss) {
+                                                const rssKb = parseInt(vmRss.replace(/[^0-9]/g, ""));
+                                                const memTotalStr = root.extractProcField(memInfoView.text(), "MemTotal");
+                                                const memTotalKb = parseInt(memTotalStr.replace(/[^0-9]/g, ""));
+                                                if (!isNaN(rssKb) && !isNaN(memTotalKb) && memTotalKb > 0) {
+                                                    memPct = (rssKb / memTotalKb * 100).toFixed(1) + "%";
                                                 }
-                                                font.pixelSize: Theme.fontSizeSmall - 2
-                                                font.family: "Monospace"
-                                                color: Theme.surfaceText
-                                                anchors.verticalCenter: parent.verticalCenter
                                             }
+                                            return "PPID: " + ppid + " · Memory: " + memPct;
                                         }
+                                        font.pixelSize: Theme.fontSizeSmall
+                                        color: Theme.surfaceVariantText
                                     }
                                 }
                             }
                         }
                     }
 
-                    // EMPTY STATE (FIXED TIMING)
+                    // Empty state
                     Column {
                         anchors.centerIn: parent
                         spacing: Theme.spacingM
@@ -2362,7 +2492,7 @@ PluginComponent {
                             } 
                         }
 
-                        DankIcon { name: "search_off"; size: 36; color: Theme.surfaceVariantText; anchors.horizontalCenter: parent.horizontalCenter }
+                        DankIcon { name: "search_off"; size: Theme.iconSizeLarge; color: Theme.surfaceVariantText; anchors.horizontalCenter: parent.horizontalCenter }
                         StyledText { text: "No matching processes"; font.pixelSize: Theme.fontSizeSmall; color: Theme.surfaceVariantText; anchors.horizontalCenter: parent.horizontalCenter }
                     }
                 }
@@ -2529,8 +2659,11 @@ PluginComponent {
         radius: 16
         color: Theme.surfaceContainerHigh
 
+        readonly property color usageColor: root.getUsageColor(statCardRoot.progressValue)
+        readonly property bool isElevated: statCardRoot.progressValue > 70
+
         border.width: 1
-        border.color: Qt.rgba(Theme.primary.r, Theme.primary.g, Theme.primary.b, 0.15)
+        border.color: isElevated ? Qt.rgba(usageColor.r, usageColor.g, usageColor.b, 0.4) : Qt.rgba(Theme.primary.r, Theme.primary.g, Theme.primary.b, 0.15)
 
         property string iconName: ""
         property color iconColor: Theme.primary
@@ -2549,13 +2682,13 @@ PluginComponent {
                 DankIcon {
                     name: statCardRoot.iconName
                     size: 20
-                    color: statCardRoot.iconColor
+                    color: statCardRoot.isElevated ? statCardRoot.usageColor : statCardRoot.iconColor
                     anchors.verticalCenter: parent.verticalCenter
                 }
 
                 StyledText {
                     text: statCardRoot.label
-                    color: Theme.surfaceVariantText
+                    color: statCardRoot.isElevated ? statCardRoot.usageColor : Theme.surfaceVariantText
                     font.pixelSize: Theme.fontSizeSmall
                     font.weight: Font.Medium
                     anchors.verticalCenter: parent.verticalCenter
@@ -2564,8 +2697,8 @@ PluginComponent {
 
             StyledText {
                 text: statCardRoot.valueText
-                color: Theme.surfaceText
-                font.pixelSize: Theme.fontSizeLarge * 1.5
+                color: statCardRoot.isElevated ? statCardRoot.usageColor : Theme.surfaceText
+                font.pixelSize: Theme.fontSizeXXLarge
                 font.weight: Font.Bold
             }
 
@@ -2579,7 +2712,7 @@ PluginComponent {
                     width: parent.width * (statCardRoot.progressValue / 100)
                     height: parent.height
                     radius: 2
-                    color: root.getUsageColor(statCardRoot.progressValue)
+                    color: statCardRoot.usageColor
 
                     Behavior on width {
                         NumberAnimation { duration: Theme.mediumDuration; easing.type: Theme.standardEasing }
@@ -2668,26 +2801,13 @@ PluginComponent {
         }
     }
 
-    // Context Menu Component (Matching Screenshot)
-    component DankContextMenu: Rectangle {
+    // Context Menu Component (Matching Screenshot & Segmented Design)
+    component DankContextMenu: Item {
         id: menuRoot
         visible: false
-        width: 190
-        height: column.implicitHeight + Theme.spacingS * 2
-        color: Theme.withAlpha(Theme.surfaceContainerHighest, Theme.popupTransparency)
-        radius: Theme.cornerRadius
+        width: 210
+        height: menuCard.implicitHeight || (column.implicitHeight + Theme.spacingS * 2)
         z: 9999
-        border.color: Theme.withAlpha(Theme.surfaceVariantText, 0.15)
-        border.width: 1
-
-        layer.enabled: true
-        layer.effect: MultiEffect {
-            shadowEnabled: true
-            shadowColor: Theme.withAlpha(Theme.shadowColor || "#000000", 0.4)
-            shadowVerticalOffset: 6
-            shadowHorizontalOffset: 0
-            shadowBlur: 1.0
-        }
 
         property var targetProcess: null
         property bool showPid: true
@@ -2711,62 +2831,135 @@ PluginComponent {
             visible = false;
         }
 
-        Column {
-            id: column
+        // Drop shadow behind menu
+        Rectangle {
+            id: shadowRect
+            anchors.fill: menuCard
+            radius: menuCard.radius
+            color: Theme.withAlpha(Theme.shadow || "#000000", 0.35)
+            layer.enabled: true
+            layer.effect: MultiEffect {
+                blurEnabled: true
+                blur: 0.8
+                blurMax: 24
+                shadowEnabled: true
+                shadowColor: Theme.withAlpha(Theme.shadow || "#000000", 0.5)
+                shadowVerticalOffset: 6
+                shadowHorizontalOffset: 0
+                shadowBlur: 1.0
+            }
+        }
+
+        Rectangle {
+            id: menuCard
             anchors.fill: parent
-            anchors.margins: Theme.spacingS
-            spacing: 2
+            color: Theme.withAlpha(Theme.surfaceContainerHighest, Theme.popupTransparency || 0.75)
+            radius: Theme.cornerRadiusL || 12
+            border.color: Theme.outlineMedium || Qt.rgba(Theme.primary.r, Theme.primary.g, Theme.primary.b, 0.15)
+            border.width: Theme.layerOutlineWidth || 1
 
-            ContextMenuItem {
-                visible: menuRoot.showPid
-                height: menuRoot.showPid ? 32 : 0
-                icon: "tag"; text: "Copy PID"
-                onClicked: {
-                    Quickshell.execDetached(["dms", "cl", "copy", menuRoot.targetProcess.pid.toString()]);
-                    menuRoot.hide();
+            Column {
+                id: column
+                anchors.fill: parent
+                anchors.margins: Theme.spacingS
+                spacing: Theme.groupedListGap || 2
+
+                // Header Pill: App Title & Icon
+                Rectangle {
+                    id: appHeaderPill
+                    width: parent.width
+                    height: 42
+                    clip: true
+                    radius: Theme.groupedListOuterRadius || Theme.cornerRadiusL || 12
+                    color: Theme.selectedContainer || Qt.rgba(Theme.primary.r, Theme.primary.g, Theme.primary.b, 0.14)
+                    border.width: Theme.layerOutlineWidth || 1
+                    border.color: Qt.rgba(Theme.primary.r, Theme.primary.g, Theme.primary.b, 0.3)
+
+                    RowLayout {
+                        anchors.fill: parent
+                        anchors.leftMargin: Theme.spacingM
+                        anchors.rightMargin: Theme.spacingM
+                        spacing: Theme.spacingS
+
+                        DankIcon {
+                            name: root.processCategoryIcon(menuRoot.targetProcess ? menuRoot.targetProcess.name : "")
+                            size: Theme.iconSizeSmall || 18
+                            color: Theme.primary
+                            Layout.alignment: Qt.AlignVCenter
+                        }
+
+                        StyledText {
+                            Layout.fillWidth: true
+                            Layout.alignment: Qt.AlignVCenter
+                            text: menuRoot.targetProcess ? menuRoot.targetProcess.name : "Process"
+                            font.pixelSize: Theme.fontSizeMedium
+                            font.weight: Font.Bold
+                            color: Theme.surfaceText
+                            elide: Text.ElideRight
+                            maximumLineCount: 1
+                        }
+                    }
                 }
-            }
 
-            Item { visible: menuRoot.showPid; width: parent.width; height: 2 }
-            Rectangle { visible: menuRoot.showPid; width: parent.width - Theme.spacingM; height: 1; color: Theme.withAlpha(Theme.surfaceVariantText, 0.1); anchors.horizontalCenter: parent.horizontalCenter }
-            Item { visible: menuRoot.showPid; width: parent.width; height: 2 }
+                Item { width: parent.width; height: Theme.spacingXS }
 
-            ContextMenuItem {
-                icon: "content_copy"; text: "Copy Name"
-                onClicked: {
-                    Quickshell.execDetached(["dms", "cl", "copy", menuRoot.targetProcess.name]);
-                    menuRoot.hide();
+                // Segment 1: PID (if enabled)
+                ContextMenuItem {
+                    visible: menuRoot.showPid
+                    height: menuRoot.showPid ? 38 : 0
+                    icon: "tag"; text: "Copy PID"
+                    isFirst: true; isLast: true
+                    onClicked: {
+                        Quickshell.execDetached(["dms", "cl", "copy", menuRoot.targetProcess.pid.toString()]);
+                        menuRoot.hide();
+                    }
                 }
-            }
-            ContextMenuItem {
-                icon: "code"; text: "Copy Full Command"
-                onClicked: {
-                    let cmd = root.formatCmdline(menuCmdView.text()) || menuRoot.targetProcess.name;
-                    Quickshell.execDetached(["dms", "cl", "copy", cmd]);
-                    menuRoot.hide();
-                }
-            }
 
-            Item { width: parent.width; height: 2 }
-            Rectangle { width: parent.width - Theme.spacingM; height: 1; color: Theme.withAlpha(Theme.surfaceVariantText, 0.1); anchors.horizontalCenter: parent.horizontalCenter }
-            Item { width: parent.width; height: 2 }
+                Item { visible: menuRoot.showPid; width: parent.width; height: Theme.spacingXS }
 
-            ContextMenuItem {
-                icon: "close"; text: "Kill Process"
-                hoverColor: Theme.withAlpha(Theme.error, 0.1)
-                hoverIconColor: Theme.error
-                onClicked: {
-                    Quickshell.execDetached(["kill", menuRoot.targetProcess.pid.toString()]);
-                    menuRoot.hide();
+                // Segment 2: Copy Name & Copy Full Command
+                ContextMenuItem {
+                    icon: "content_copy"; text: "Copy Name"
+                    isFirst: true; isLast: false
+                    onClicked: {
+                        Quickshell.execDetached(["dms", "cl", "copy", menuRoot.targetProcess.name]);
+                        menuRoot.hide();
+                    }
                 }
-            }
-            ContextMenuItem {
-                icon: "cancel"; text: "Force Kill (SIGKILL)"
-                hoverColor: Theme.withAlpha(Theme.error, 0.1)
-                hoverIconColor: Theme.error
-                onClicked: {
-                    Quickshell.execDetached(["kill", "-9", menuRoot.targetProcess.pid.toString()]);
-                    menuRoot.hide();
+                ContextMenuItem {
+                    icon: "code"; text: "Copy Full Command"
+                    isFirst: false; isLast: true
+                    onClicked: {
+                        let cmd = root.formatCmdline(menuCmdView.text()) || menuRoot.targetProcess.name;
+                        Quickshell.execDetached(["dms", "cl", "copy", cmd]);
+                        menuRoot.hide();
+                    }
+                }
+
+                Item { width: parent.width; height: Theme.spacingXS }
+
+                // Segment 3: Kill Actions
+                ContextMenuItem {
+                    icon: "close"; text: "Kill Process"
+                    isFirst: true; isLast: false
+                    hoverColor: Theme.withAlpha(Theme.error, 0.15)
+                    hoverIconColor: Theme.error
+                    hoverTextColor: Theme.error
+                    onClicked: {
+                        Quickshell.execDetached(["kill", menuRoot.targetProcess.pid.toString()]);
+                        menuRoot.hide();
+                    }
+                }
+                ContextMenuItem {
+                    icon: "cancel"; text: "Force Kill (SIGKILL)"
+                    isFirst: false; isLast: true
+                    hoverColor: Theme.withAlpha(Theme.error, 0.15)
+                    hoverIconColor: Theme.error
+                    hoverTextColor: Theme.error
+                    onClicked: {
+                        Quickshell.execDetached(["kill", "-9", menuRoot.targetProcess.pid.toString()]);
+                        menuRoot.hide();
+                    }
                 }
             }
         }
@@ -2775,27 +2968,55 @@ PluginComponent {
     component ContextMenuItem: Rectangle {
         id: itemRoot
         width: parent.width
-        height: 32
-        radius: 8
-        color: itemMouseArea.containsMouse ? hoverColor : "transparent"
+        height: 38
+        clip: true
 
-        property color hoverColor: Theme.withAlpha(Theme.primary, 0.08)
+        property bool isFirst: false
+        property bool isLast: false
+        readonly property real outerRad: Theme.groupedListOuterRadius || Theme.cornerRadiusL || 12
+        readonly property real innerRad: Theme.groupedListInnerRadius || Theme.cornerRadiusXS || 4
+
+        radius: innerRad
+        topLeftRadius: isFirst ? outerRad : innerRad
+        topRightRadius: isFirst ? outerRad : innerRad
+        bottomLeftRadius: isLast ? outerRad : innerRad
+        bottomRightRadius: isLast ? outerRad : innerRad
+
+        Behavior on topLeftRadius { NumberAnimation { duration: 150 } }
+        Behavior on topRightRadius { NumberAnimation { duration: 150 } }
+        Behavior on bottomLeftRadius { NumberAnimation { duration: 150 } }
+        Behavior on bottomRightRadius { NumberAnimation { duration: 150 } }
+
+        color: itemMouseArea.containsMouse
+            ? hoverColor
+            : (Theme.foregroundColor ? Theme.foregroundColor(Theme.chipSurface) : Qt.rgba(Theme.secondary.r, Theme.secondary.g, Theme.secondary.b, 0.04))
+
+        border.width: Theme.layerOutlineWidth || 1
+        border.color: itemMouseArea.containsMouse
+            ? Theme.withAlpha(hoverIconColor, 0.35)
+            : (Theme.outlineMedium || Qt.rgba(Theme.secondary.r, Theme.secondary.g, Theme.secondary.b, 0.15))
+
+        Behavior on color { ColorAnimation { duration: 150 } }
+        Behavior on border.color { ColorAnimation { duration: 150 } }
+
+        property color hoverColor: Theme.withAlpha(Theme.primary, 0.12)
         property color hoverIconColor: Theme.primary
+        property color hoverTextColor: Theme.surfaceText
 
         property string icon: ""
         property string text: ""
         signal clicked()
 
-        DankRipple { id: ripple; cornerRadius: itemRoot.radius }
+        DankRipple { id: ripple; cornerRadius: itemRoot.innerRad }
 
         Row {
             anchors.fill: parent
-            anchors.leftMargin: Theme.spacingS
+            anchors.leftMargin: Theme.spacingM
             spacing: Theme.spacingS
 
             DankIcon {
                 name: itemRoot.icon
-                size: 18
+                size: Theme.iconSizeSmall
                 color: itemMouseArea.containsMouse ? itemRoot.hoverIconColor : Theme.surfaceVariantText
                 anchors.verticalCenter: parent.verticalCenter
                 Behavior on color { ColorAnimation { duration: Theme.shortDuration } }
@@ -2805,8 +3026,9 @@ PluginComponent {
                 text: itemRoot.text
                 font.pixelSize: Theme.fontSizeSmall
                 font.weight: Font.Medium
-                color: Theme.surfaceText
+                color: itemMouseArea.containsMouse ? itemRoot.hoverTextColor : Theme.surfaceText
                 anchors.verticalCenter: parent.verticalCenter
+                Behavior on color { ColorAnimation { duration: Theme.shortDuration } }
             }
         }
 
@@ -2814,6 +3036,7 @@ PluginComponent {
             id: itemMouseArea
             anchors.fill: parent
             hoverEnabled: true
+            cursorShape: Qt.PointingHandCursor
             onPressed: ripple.trigger(mouse.x, mouse.y)
             onClicked: itemRoot.clicked()
         }
