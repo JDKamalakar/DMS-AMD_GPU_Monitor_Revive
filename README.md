@@ -26,9 +26,11 @@ High-performance monitoring suite for AMD GPUs in the Dank Material Shell – tr
 <div align="left">
 
 * **📊 Comprehensive Monitoring**: Real-time tracking of GFX, Memory, and Media Engine utilization.
-* **🌡️ Thermal & Power**: Live edge/junction temperature data and socket power consumption metrics.
+* **🌡️ Thermal & Power**: Live edge/junction temperature data and socket power consumption metrics with sysfs fallback.
 * **💾 VRAM Insights**: Detailed capacity visualization and granular allocation statistics.
-* **🔍 Per-Process Metrics**: Identify VRAM, GFX, and CPU consumption on a per-application basis.
+* **🔍 Per-Process Metrics**: Identify VRAM, GFX, and CPU consumption on a per-application basis with hover tooltips and interactive sort.
+* **🖥️ Multi-GPU & Auto-Detection**: Automatic PCI-based GPU detection, runtime suspend/resume support, and inline name/icon customization.
+* **⚡ Shared Polling Service**: Single background `amdgpu_top` service shared across multi-monitor bars to minimize CPU overhead.
 * **🚨 Smart Indicators**: Visual alerts with configurable Normal/Warning/Critical thresholds.
 * **✨ Dynamic Layouts**: Supports Legacy, Alternate, DMS Standard, and DMS Extended modes.
 

@@ -1,0 +1,8 @@
+singleton AmdGpuService AmdGpuService.qml
+DuxProcessDetailView 1.0 DuxProcessDetailView.qml
+PopoutAltStyle 1.0 PopoutAltStyle.qml
+PopoutDuxStyle 1.0 PopoutDuxStyle.qml
+PopoutDuxExtendedStyle 1.0 PopoutDuxExtendedStyle.qml
+CircleGauge 1.0 CircleGauge.qml
+StatCard 1.0 StatCard.qml
+EngineBar 1.0 EngineBar.qml
