@@ -1,10 +1,13 @@
 import QtQuick
 import QtQuick.Layouts
 import Quickshell
+import Quickshell.Io
 
 import qs.Common
 import qs.Widgets
+import qs.DCommon.Widgets
 import qs.Modules.Plugins
+import qs.Modules.Settings.Widgets
 import qs.Services
 
 PluginSettings {
@@ -251,7 +254,7 @@ PluginSettings {
         spacing: Theme.spacingXS
         leftPadding: Theme.spacingM
 
-        DankIcon {
+        DIcon {
             name: iconName
             size: 16
             color: Theme.primary
@@ -314,7 +317,7 @@ PluginSettings {
                 Layout.alignment: Qt.AlignVCenter
                 Behavior on color { ColorAnimation { duration: 150 } }
 
-                DankIcon {
+                DIcon {
                     name: toggleCard.iconName
                     size: 18
                     color: toggle.checked ? Theme.primary : Theme.surfaceVariantText
@@ -341,7 +344,7 @@ PluginSettings {
                 }
             }
 
-            DankToggle {
+            DToggle {
                 id: toggle
                 Layout.alignment: Qt.AlignVCenter
                 Component.onCompleted: toggleCard.loadValue()
@@ -429,7 +432,7 @@ PluginSettings {
                 color: Qt.rgba(Theme.primary.r, Theme.primary.g, Theme.primary.b, 0.15)
                 Layout.alignment: Qt.AlignVCenter
 
-                DankIcon {
+                DIcon {
                     name: selectCard.iconName
                     size: 18
                     color: Theme.primary
@@ -455,7 +458,7 @@ PluginSettings {
                 }
             }
 
-            DankDropdown {
+            DDropdown {
                 id: dropdown
                 Layout.alignment: Qt.AlignVCenter
                 compactMode: true
@@ -523,7 +526,7 @@ PluginSettings {
                     color: Qt.rgba(Theme.primary.r, Theme.primary.g, Theme.primary.b, 0.15)
                     Layout.alignment: Qt.AlignVCenter
 
-                    DankIcon {
+                    DIcon {
                         name: fieldCard.iconName
                         size: 18
                         color: Theme.primary
@@ -550,7 +553,7 @@ PluginSettings {
                 }
             }
 
-            DankTextField {
+            DTextField {
                 id: customField
                 width: parent.width
                 placeholderText: fieldCard.placeholderText !== "" ? fieldCard.placeholderText : fieldCard.defaultValue
@@ -615,7 +618,7 @@ PluginSettings {
                     color: Qt.rgba(Theme.primary.r, Theme.primary.g, Theme.primary.b, 0.15)
                     Layout.alignment: Qt.AlignVCenter
 
-                    DankIcon {
+                    DIcon {
                         name: sliderCard.iconName
                         size: 18
                         color: Theme.primary
@@ -659,14 +662,14 @@ PluginSettings {
                     Behavior on opacity { NumberAnimation { duration: 150 } }
                     Behavior on scale { NumberAnimation { duration: 150; easing.type: Easing.OutBack } }
 
-                    DankRipple { 
+                    DRipple { 
                         id: resetRip
                         anchors.fill: parent
                         cornerRadius: parent.radius
                         rippleColor: Theme.primary 
                     }
 
-                    DankIcon {
+                    DIcon {
                         id: resetIcon
                         name: "restart_alt"
                         size: 16
@@ -710,7 +713,7 @@ PluginSettings {
                 width: parent.width
                 spacing: Theme.spacingM
 
-                DankSlider {
+                DSlider {
                     id: slider
                     property string settingKey: sliderCard.settingKey
                     Layout.fillWidth: true
@@ -807,19 +810,20 @@ PluginSettings {
             spacing: 2
 
             SettingsSelectItem {
+                id: popoutStyleSelect
                 iconName: "dashboard"
                 title: "Popout Style"
                 description: "Visual style for the popout panel."
                 settingKey: "popoutStyle"
                 options: [
-                    { label: "Legacy", value: "legacy" },
                     { label: "Alternative", value: "alt" },
-                    { label: "DMS", value: "dms" },
-                    { label: "DMS Extended", value: "dmsExtended" }
+                    { label: "DUX", value: "dms" },
+                    { label: "DUX Extended", value: "dmsExtended" }
                 ]
                 defaultValue: "dmsExtended"
                 isFirst: true
             }
+
 
             SettingsToggleItem {
                 iconName: "aspect_ratio"
@@ -963,7 +967,7 @@ PluginSettings {
                             Layout.alignment: Qt.AlignVCenter
                             Behavior on color { ColorAnimation { duration: 150 } }
 
-                            DankIcon {
+                            DIcon {
                                 name: "developer_board"
                                 size: 18
                                 color: gpuEnabledToggle.checked ? Theme.primary : Theme.surfaceVariantText
@@ -996,7 +1000,7 @@ PluginSettings {
                             Layout.alignment: Qt.AlignVCenter
                             spacing: Theme.spacingXS
 
-                            DankToggle {
+                            DToggle {
                                 id: gpuEnabledToggle
                                 anchors.verticalCenter: parent.verticalCenter
                                 Component.onCompleted: {
@@ -1067,7 +1071,7 @@ PluginSettings {
                                         color: Qt.rgba(Theme.primary.r, Theme.primary.g, Theme.primary.b, 0.15)
                                         Layout.alignment: Qt.AlignVCenter
 
-                                        DankIcon {
+                                        DIcon {
                                             name: "badge"
                                             size: 16
                                             color: Theme.primary
@@ -1094,7 +1098,7 @@ PluginSettings {
                                     }
                                 }
 
-                                DankTextField {
+                                DTextField {
                                     id: gpuNameField
                                     width: parent.width
                                     placeholderText: modelData.name || "e.g. Radeon RX 7900 XTX"
@@ -1123,7 +1127,7 @@ PluginSettings {
                                         color: Qt.rgba(Theme.primary.r, Theme.primary.g, Theme.primary.b, 0.15)
                                         Layout.alignment: Qt.AlignVCenter
 
-                                        DankIcon {
+                                        DIcon {
                                             name: "image"
                                             size: 16
                                             color: Theme.primary
@@ -1141,7 +1145,7 @@ PluginSettings {
                                             color: Theme.surfaceText
                                         }
                                         StyledText {
-                                            text: "Absolute path or URL to replace the default logo in DMS Extended."
+                                            text: "Absolute path or URL to replace the default logo in DUX Extended."
                                             font.pixelSize: Theme.fontSizeSmall
                                             color: Theme.surfaceVariantText
                                             Layout.fillWidth: true
@@ -1150,7 +1154,7 @@ PluginSettings {
                                     }
                                 }
 
-                                DankTextField {
+                                DTextField {
                                     id: heroIconField
                                     width: parent.width
                                     placeholderText: "/path/to/icon.png"
@@ -1234,7 +1238,7 @@ PluginSettings {
                     height: 20
                     anchors.verticalCenter: parent.verticalCenter
 
-                    DankIcon {
+                    DIcon {
                         name: "progress_activity"
                         size: 20
                         color: Theme.surfaceVariantText
@@ -1296,7 +1300,7 @@ PluginSettings {
                         color: Qt.rgba(Theme.primary.r, Theme.primary.g, Theme.primary.b, 0.15)
                         Layout.alignment: Qt.AlignVCenter
 
-                        DankIcon {
+                        DIcon {
                             name: "developer_board"
                             size: 18
                             color: Theme.primary
@@ -1469,7 +1473,7 @@ PluginSettings {
                         color: Qt.rgba(Theme.primary.r, Theme.primary.g, Theme.primary.b, 0.15)
                         anchors.verticalCenter: parent.verticalCenter
 
-                        DankIcon {
+                        DIcon {
                             id: variantIcon
                             name: variantEntry.modelData.icon || "dashboard"
                             size: 18
@@ -1537,7 +1541,7 @@ PluginSettings {
                             Behavior on color { ColorAnimation { duration: 150 } }
                             Behavior on border.color { ColorAnimation { duration: 150 } }
 
-                            DankIcon {
+                            DIcon {
                                 anchors.centerIn: parent
                                 name: "edit"
                                 size: 16
@@ -1581,7 +1585,7 @@ PluginSettings {
                             Behavior on color { ColorAnimation { duration: 150 } }
                             Behavior on border.color { ColorAnimation { duration: 150 } }
 
-                            DankIcon {
+                            DIcon {
                                 anchors.centerIn: parent
                                 name: "restart_alt"
                                 size: 16
@@ -1624,7 +1628,7 @@ PluginSettings {
                             Behavior on color { ColorAnimation { duration: 150 } }
                             Behavior on border.color { ColorAnimation { duration: 150 } }
 
-                            DankIcon {
+                            DIcon {
                                 anchors.centerIn: parent
                                 name: "delete"
                                 size: 16
@@ -1674,7 +1678,7 @@ PluginSettings {
                             anchors.rightMargin: Theme.spacingM
                             spacing: Theme.spacingS
 
-                            DankIcon {
+                            DIcon {
                                 name: "badge"
                                 size: 18
                                 color: editNameField.activeFocus ? Theme.primary : Theme.surfaceVariantText
@@ -1709,7 +1713,7 @@ PluginSettings {
                         width: parent.width
                         spacing: Theme.spacingS
 
-                        DankIcon {
+                        DIcon {
                             name: variantEntry.pendingIcon || variantEntry.pickerIcon || "dashboard"
                             size: 20
                             color: Theme.surfaceText
@@ -1776,7 +1780,7 @@ PluginSettings {
                             }
                         }
 
-                        DankIconPicker {
+                        DIconPicker {
                             id: iconPicker
                             width: 200
                             height: 36
@@ -1794,7 +1798,7 @@ PluginSettings {
                         width: parent.width
                         spacing: Theme.spacingXS
 
-                        DankIcon {
+                        DIcon {
                             name: "open_in_new"
                             size: Theme.fontSizeSmall
                             color: Theme.primary
@@ -1840,7 +1844,7 @@ PluginSettings {
                                 anchors.centerIn: parent
                                 spacing: Theme.spacingXS
 
-                                DankIcon {
+                                DIcon {
                                     name: "save"
                                     size: 16
                                     color: Theme.onPrimary || "#ffffff"
@@ -1913,6 +1917,198 @@ PluginSettings {
             text: "No widgets configured yet."
             font.pixelSize: Theme.fontSizeSmall
             color: Theme.surfaceVariantText
+        }
+
+        // ---------------------------------------------------------------------
+        // REQUIRED PACKAGES
+        // ---------------------------------------------------------------------
+        Item {
+            id: depsWrapper
+            width: parent.width
+            implicitHeight: depsCol.implicitHeight
+
+            property bool expanded: false
+            property var depStatus: ({
+                "amdgpu_top": true,
+                "lspci": true,
+                "glxinfo": true,
+                "notify-send": true,
+                "kill": true
+            })
+            property bool isChecking: true
+
+            Process {
+                id: depChecker
+                command: [
+                    "bash", "-c",
+                    "python3 -c \"import json, shutil, sys\n" +
+                    "cmds = [\n" +
+                    "  ('amdgpu_top', 'amdgpu_top'),\n" +
+                    "  ('lspci', 'lspci'),\n" +
+                    "  ('glxinfo', 'glxinfo'),\n" +
+                    "  ('notify-send', 'notify-send'),\n" +
+                    "  ('kill', 'kill')\n" +
+                    "]\n" +
+                    "results = {k: bool(shutil.which(cmd)) for k, cmd in cmds}\n" +
+                    "sys.stdout.write(json.dumps(results))\n\""
+                ]
+                stdout: StdioCollector {
+                    onStreamFinished: {
+                        depsWrapper.isChecking = false;
+                        try {
+                            if (text && text.trim() !== "") {
+                                depsWrapper.depStatus = JSON.parse(text.trim());
+                            }
+                        } catch (e) {
+                            console.warn("Failed to parse dependency status:", e);
+                        }
+                    }
+                }
+            }
+
+            Component.onCompleted: {
+                depChecker.running = true;
+            }
+
+            Column {
+                id: depsCol
+                width: parent.width
+                spacing: 0
+
+                Item {
+                    id: depsHeaderRow
+                    width: parent.width
+                    height: 40
+
+                    Row {
+                        anchors.left: parent.left
+                        anchors.leftMargin: Theme.spacingM
+                        anchors.verticalCenter: parent.verticalCenter
+                        spacing: Theme.spacingXS
+
+                        DIcon {
+                            name: "extension"
+                            size: 16
+                            color: Theme.primary
+                            anchors.verticalCenter: parent.verticalCenter
+                        }
+
+                        StyledText {
+                            text: I18n.tr("Required packages")
+                            font.pixelSize: Theme.fontSizeSmall
+                            font.weight: Font.DemiBold
+                            color: Theme.primary
+                            anchors.verticalCenter: parent.verticalCenter
+                        }
+                    }
+
+                    DIcon {
+                        anchors.right: parent.right
+                        anchors.rightMargin: Theme.spacingM
+                        anchors.verticalCenter: parent.verticalCenter
+                        name: "expand_more"
+                        size: Theme.iconSize || 20
+                        color: Theme.surfaceVariantText
+                        rotation: depsWrapper.expanded ? 180 : 0
+
+                        Behavior on rotation {
+                            NumberAnimation {
+                                duration: 200
+                                easing.type: Easing.OutCubic
+                            }
+                        }
+                    }
+
+                    MouseArea {
+                        anchors.fill: parent
+                        cursorShape: Qt.PointingHandCursor
+                        onClicked: {
+                            depsWrapper.expanded = !depsWrapper.expanded;
+                            if (depsWrapper.expanded) {
+                                depsWrapper.isChecking = true;
+                                depChecker.running = true;
+                            }
+                        }
+                    }
+                }
+
+                Item {
+                    id: animHost
+                    width: parent.width
+                    clip: true
+                    height: depsWrapper.expanded ? groupContent.implicitHeight : 0
+                    opacity: depsWrapper.expanded ? 1.0 : 0.0
+                    visible: height > 0 || depsWrapper.expanded
+
+                    Behavior on height {
+                        NumberAnimation {
+                            duration: 250
+                            easing.type: Easing.OutCubic
+                        }
+                    }
+
+                    Behavior on opacity {
+                        NumberAnimation {
+                            duration: 200
+                            easing.type: Easing.OutQuad
+                        }
+                    }
+
+                    SettingsGroup {
+                        id: groupContent
+                        width: parent.width
+
+                        SettingsRow {
+                            visible: depsWrapper.isChecking
+                            iconName: "hourglass_top"
+                            title: I18n.tr("Checking packages...")
+                        }
+
+                        Repeater {
+                            model: [
+                                {
+                                    id: "amdgpu_top",
+                                    pkg: "amdgpu_top",
+                                    features: "Core AMD GPU metrics & process monitor (fdinfo, sensors, VRAM)",
+                                    present: Boolean(depsWrapper.depStatus["amdgpu_top"])
+                                },
+                                {
+                                    id: "lspci",
+                                    pkg: "pciutils (lspci)",
+                                    features: "PCI hardware device discovery and vendor identification",
+                                    present: Boolean(depsWrapper.depStatus["lspci"])
+                                },
+                                {
+                                    id: "glxinfo",
+                                    pkg: "mesa-demos / mesa-utils (glxinfo)",
+                                    features: "OpenGL driver query and hardware acceleration status",
+                                    present: Boolean(depsWrapper.depStatus["glxinfo"])
+                                },
+                                {
+                                    id: "notify-send",
+                                    pkg: "libnotify (notify-send)",
+                                    features: "Desktop notifications for GPU alert events",
+                                    present: Boolean(depsWrapper.depStatus["notify-send"])
+                                },
+                                {
+                                    id: "kill",
+                                    pkg: "procps / util-linux (kill)",
+                                    features: "GPU process termination from context menu",
+                                    present: Boolean(depsWrapper.depStatus["kill"])
+                                }
+                            ]
+
+                            delegate: SettingsRow {
+                                iconName: modelData.present ? "check_circle" : "error"
+                                iconColor: modelData.present ? Theme.success : Theme.error
+                                title: modelData.pkg
+                                subtitle: I18n.tr("Used for: %1").arg(modelData.features)
+                                trailingBadge: modelData.present ? I18n.tr("Installed") : I18n.tr("Missing")
+                                trailingBadgeColor: modelData.present ? Theme.surfaceVariantText : Theme.error
+                            }
+                        }
+                    }                }
+            }
         }
     }
     }
